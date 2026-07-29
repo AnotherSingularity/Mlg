@@ -306,6 +306,18 @@ class ApplicationConfig:
     def digest(self) -> str:
         return digest(self.to_canonical())
 
+    def semantic_canonical(self) -> dict:
+        """Same as ``to_canonical`` but excludes fields that only
+        affect observability, not semantics. Used to compute the
+        graph identity so that toggling tracing does not change
+        semantic outputs (mandate §20)."""
+        c = self.to_canonical()
+        c.pop("observability", None)
+        return c
+
+    def semantic_digest(self) -> str:
+        return digest(self.semantic_canonical())
+
 
 # ---------------------------------------------------------------------------
 # Resolver

@@ -162,7 +162,7 @@ def build_from_config(config: ApplicationConfig) -> ApplicationGraph:
     nodes: List[ApplicationNode] = []
     edges: List[ApplicationEdge] = []
 
-    cfg_digest = config.digest()
+    cfg_digest = config.semantic_digest()
 
     # -- Deterministic capability negotiation per source --
     for s in config.sources:
