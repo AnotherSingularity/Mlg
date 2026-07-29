@@ -1,0 +1,28 @@
+"""Aeon Application — v0.1.
+
+A greenfield Aeon-native application built directly on the
+certified Aeon Language v0.1.0. See
+``aeon-application/specification/00-APPLICATION-CONSTITUTION.md``
+for the governing document.
+"""
+
+from __future__ import annotations
+
+APPLICATION_VERSION = "0.1.0"
+APPLICATION_GRAPH_SCHEMA_VERSION = "0.1.0"
+APPLICATION_CONFIG_SCHEMA_VERSION = "0.1.0"
+APPLICATION_SNAPSHOT_SCHEMA_VERSION = "0.1.0"
+
+# Aeon Language pin.
+AEON_LANGUAGE_REQUIRED_VERSION = "0.1.0"
+AEON_LANGUAGE_CERTIFIED_COMMIT = "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f"
+
+
+__all__ = [
+    "APPLICATION_VERSION",
+    "APPLICATION_GRAPH_SCHEMA_VERSION",
+    "APPLICATION_CONFIG_SCHEMA_VERSION",
+    "APPLICATION_SNAPSHOT_SCHEMA_VERSION",
+    "AEON_LANGUAGE_REQUIRED_VERSION",
+    "AEON_LANGUAGE_CERTIFIED_COMMIT",
+]

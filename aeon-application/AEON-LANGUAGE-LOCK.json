@@ -1,0 +1,15 @@
+{
+  "language_version": "0.1.0",
+  "certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
+  "ir_version": "0.1.0",
+  "instruction_set_version": "0.1.0",
+  "stdlib_version": "0.1.0",
+  "source_grammar_version": "0.1.0",
+  "certificate_schema": "0.1.0",
+  "snapshot_schema": "0.1.0",
+  "conformance_profile": "0.1.0",
+  "backend_contract": "0.1.0",
+  "migration_framework": "0.1.0",
+  "certified_ci_run": "30472658596",
+  "lock_generator": "aeon_app.config.language_lock:0.1.0"
+}

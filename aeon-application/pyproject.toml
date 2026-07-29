@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeon-application"
+version = "0.1.0"
+description = "Aeon Application v0.1 — greenfield Aeon-native application built on Aeon Language v0.1.0"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "AnotherSingularity" }]
+dependencies = ["aeon-language==0.1.0"]
+
+[project.optional-dependencies]
+numpy = ["numpy>=1.26"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+aeon-app-check    = "aeon_app.cli:app_check"
+aeon-app-compile  = "aeon_app.cli:app_compile"
+aeon-app-run      = "aeon_app.cli:app_run"
+aeon-app-train    = "aeon_app.cli:app_train"
+aeon-app-evaluate = "aeon_app.cli:app_evaluate"
+aeon-app-snapshot = "aeon_app.cli:app_snapshot"
+aeon-app-replay   = "aeon_app.cli:app_replay"
+aeon-app-inspect  = "aeon_app.cli:app_inspect"
+
+[tool.setuptools]
+package-dir = {"aeon_app" = "src/aeon_app"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aeon_app", "aeon_app.*"]
+
+[tool.setuptools.package-data]
+"aeon_app" = ["*.json"]
