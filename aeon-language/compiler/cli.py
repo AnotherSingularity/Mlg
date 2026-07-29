@@ -25,7 +25,12 @@ import sys
 from pathlib import Path
 from typing import Any, List, Optional
 
-from aeon import IR_VERSION, INSTRUCTION_SET_VERSION, LANGUAGE_VERSION
+from aeon import (
+    INSTRUCTION_SET_VERSION,
+    IR_VERSION,
+    LANGUAGE_VERSION,
+    STDLIB_VERSION,
+)
 from aeon.contraction import (
     CertificationMethod,
     Contractive,
@@ -40,6 +45,41 @@ from aeon.sources.dummy import DummyRichSource, DummyVectorSource
 from .formatter import format_module
 from .parser import ParseError, parse
 from .validator import validate as validate_module
+
+# Structured exit codes (Phase 0.1 §10).
+EX_OK = 0
+EX_USAGE = 2
+EX_PARSE = 3
+EX_VALIDATE = 4
+EX_FORMAT = 5
+EX_REPLAY_DIFF = 6
+EX_INCOMPAT = 7
+EX_OVERWRITE_REFUSED = 8
+
+
+def _version_string() -> str:
+    return (
+        f"aeon (language={LANGUAGE_VERSION} "
+        f"ir={IR_VERSION} isa={INSTRUCTION_SET_VERSION} "
+        f"stdlib={STDLIB_VERSION})"
+    )
+
+
+def _add_common(ap: argparse.ArgumentParser, *,
+                json_output: bool = False) -> None:
+    ap.add_argument("--version", action="version", version=_version_string())
+    if json_output:
+        ap.add_argument("--json", action="store_true",
+                        help="emit machine-readable JSON to stdout")
+
+
+def _refuse_overwrite(path: Optional[str], force: bool) -> Optional[int]:
+    if path and os.path.exists(path) and not force:
+        sys.stderr.write(
+            f"refusing to overwrite existing file {path!r}; pass --force to override.\n"
+        )
+        return EX_OVERWRITE_REFUSED
+    return None
 
 
 def _print_diag_json(diagnostics) -> None:
@@ -62,6 +102,12 @@ def _read_source(path: str) -> str:
         return f.read()
 
 
+def _read_source_or_stdin(path: str) -> str:
+    if path == "-":
+        return sys.stdin.read()
+    return _read_source(path)
+
+
 def _load_ir(path: str):
     """Rebuild an IRModule from a compiled .aeon.ir.json file (a canonical
     envelope). Only supports the envelope produced by aeonc for now.
@@ -81,29 +127,36 @@ def _load_ir(path: str):
 
 def aeonc(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeonc", description="Compile Aeon source to canonical IR")
-    ap.add_argument("source", help="Path to an Aeon source file (.aeon)")
+    _add_common(ap)
+    ap.add_argument("source", help="Path to an Aeon source file (.aeon), or - for stdin")
     ap.add_argument("-o", "--output", help="Output path for the canonical IR JSON")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ticks-per-clock", type=int, default=8)
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite an existing output file")
     args = ap.parse_args(argv)
 
     try:
-        text = _read_source(args.source)
+        text = _read_source_or_stdin(args.source)
     except OSError as exc:
         sys.stderr.write(f"aeonc: cannot read {args.source}: {exc}\n")
-        return 2
+        return EX_USAGE
+
+    rc = _refuse_overwrite(args.output, args.force)
+    if rc is not None:
+        return rc
 
     try:
         module = parse(text, filename=args.source, module_id=args.source)
     except ParseError as exc:
         sys.stderr.write(f"aeonc: parse failed: {exc}\n")
-        return 3
+        return EX_PARSE
 
     res = validate_module(module)
     if not res.ok():
         sys.stderr.write("aeonc: validation failed:\n")
         _print_diag_json(res.errors())
-        return 4
+        return EX_VALIDATE
 
     from runtime.scheduler import lower
     ir = lower(module, res.graph, seed=args.seed, ticks_per_clock=args.ticks_per_clock)
@@ -125,22 +178,37 @@ def aeonc(argv: Optional[List[str]] = None) -> int:
 
 def aeonrun(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeonrun", description="Execute an Aeon program (source-driven)")
-    ap.add_argument("source", help="Path to an Aeon source file (.aeon)")
+    _add_common(ap)
+    ap.add_argument("source", help="Path to an Aeon source file (.aeon), or - for stdin")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ticks-per-clock", type=int, default=8)
     ap.add_argument("--dimension", type=int, default=4,
                     help="Dimension for default reference sources")
+    ap.add_argument("--backend", choices=["python", "numpy"], default="python",
+                    help="Backend adapter to execute with")
     args = ap.parse_args(argv)
 
-    text = _read_source(args.source)
+    text = _read_source_or_stdin(args.source)
     module = parse(text, filename=args.source, module_id=args.source)
     res = validate_module(module)
     if not res.ok():
         _print_diag_json(res.errors())
-        return 4
+        return EX_VALIDATE
 
     from runtime.scheduler import lower
     ir = lower(module, res.graph, seed=args.seed, ticks_per_clock=args.ticks_per_clock)
+
+    # Version compatibility check (mandate §10):
+    # aeonrun MUST reject unvalidated or incompatible IR. The
+    # scheduler tags IR with the current versions; if they diverged
+    # (e.g. reader older than artifact), we would refuse here.
+    if ir.aeon_ir_version != IR_VERSION or ir.language_version != LANGUAGE_VERSION:
+        sys.stderr.write(
+            f"aeonrun: incompatible IR version "
+            f"(ir={ir.aeon_ir_version!r} language={ir.language_version!r}; "
+            f"expected ir={IR_VERSION!r} language={LANGUAGE_VERSION!r})\n"
+        )
+        return EX_INCOMPAT
 
     sources = {}
     for s in module.sources:
@@ -150,21 +218,45 @@ def aeonrun(argv: Optional[List[str]] = None) -> int:
             sources[s.name] = DummyVectorSource(s.name, args.dimension)
 
     substrates = {}
-    for r in module.recursions:
-        contract = Contractive(
-            metric=Metric.LINF,
-            requested_margin=r.contraction_margin or 0.9,
-            numerical_tolerance=1e-12,
-            precision_policy=PrecisionPolicy("float64"),
-            certification_method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-        )
-        substrates[r.name] = ReferenceContractiveRecursion(
-            dimension=r.dimension or args.dimension, contract=contract,
-            substrate_id=r.name, decay=0.5,
-        )
-
-    from backends.python import PythonBackend
-    outcome = PythonBackend().execute(ir, sources=sources, substrates=substrates, seed=args.seed)
+    if args.backend == "numpy":
+        try:
+            from backends.numpy import NumpyBackend, NumpyContractiveRecursion
+        except ImportError as exc:
+            sys.stderr.write(f"aeonrun: numpy backend unavailable: {exc}\n")
+            return EX_USAGE
+        for r in module.recursions:
+            contract = Contractive(
+                metric=Metric.LINF,
+                requested_margin=r.contraction_margin or 0.9,
+                numerical_tolerance=1e-12,
+                precision_policy=PrecisionPolicy("float64"),
+                certification_method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            )
+            substrates[r.name] = NumpyContractiveRecursion(
+                dimension=r.dimension or args.dimension, contract=contract,
+                substrate_id=r.name, decay=0.5,
+                declared_input_radius=10.0, declared_state_radius=10.0,
+                declared_projection_scale_upper=1.0,
+            )
+        backend = NumpyBackend()
+    else:
+        for r in module.recursions:
+            contract = Contractive(
+                metric=Metric.LINF,
+                requested_margin=r.contraction_margin or 0.9,
+                numerical_tolerance=1e-12,
+                precision_policy=PrecisionPolicy("float64"),
+                certification_method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            )
+            substrates[r.name] = ReferenceContractiveRecursion(
+                dimension=r.dimension or args.dimension, contract=contract,
+                substrate_id=r.name, decay=0.5,
+                declared_input_radius=10.0, declared_state_radius=10.0,
+                declared_projection_scale_upper=1.0,
+            )
+        from backends.python import PythonBackend
+        backend = PythonBackend()
+    outcome = backend.execute(ir, sources=sources, substrates=substrates, seed=args.seed)
 
     summary = {
         "module_id": ir.module_id,
@@ -190,23 +282,48 @@ def aeonrun(argv: Optional[List[str]] = None) -> int:
 
 
 def aeoncheck(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="aeoncheck", description="Validate an Aeon source module")
-    ap.add_argument("source")
+    ap = argparse.ArgumentParser(prog="aeoncheck", description="Validate an Aeon source module via the staged compiler pipeline")
+    _add_common(ap, json_output=True)
+    ap.add_argument("source", help="Path to an Aeon source file, or - for stdin")
     args = ap.parse_args(argv)
 
-    text = _read_source(args.source)
-    try:
-        module = parse(text, filename=args.source, module_id=args.source)
-    except ParseError as exc:
-        sys.stderr.write(f"aeoncheck: {exc}\n")
-        return 3
+    text = _read_source_or_stdin(args.source)
+    from .pipeline import ALL_STAGES, run_pipeline
+    result = run_pipeline(text, filename=args.source, module_id=args.source)
 
-    res = validate_module(module)
-    if not res.ok():
-        _print_diag_json(res.diagnostics)
-        return 4
-    sys.stdout.write("OK\n")
-    return 0
+    if args.json:
+        payload = {
+            "source_file": result.source_file,
+            "stages_run": result.stages_run,
+            "failed_stage": result.failed_stage,
+            "diagnostics": [
+                {
+                    "severity": d.severity.value,
+                    "code": d.code,
+                    "message": d.message,
+                    "file": d.source_span.file if d.source_span else None,
+                    "line": d.source_span.start_line if d.source_span else None,
+                    "col": d.source_span.start_col if d.source_span else None,
+                    "remediation": d.remediation,
+                }
+                for d in result.diagnostics
+            ],
+            "ok": result.ok(),
+            "language_version": LANGUAGE_VERSION,
+            "ir_version": IR_VERSION,
+        }
+        sys.stdout.write(json.dumps(payload, sort_keys=True, indent=2) + "\n")
+    else:
+        if result.ok():
+            sys.stdout.write(f"OK — {len(result.stages_run)} stage(s) passed\n")
+        else:
+            sys.stderr.write(
+                f"aeoncheck: failed at stage {result.failed_stage!r} "
+                f"(stage {result.stages_run.index(result.failed_stage) + 1 if result.failed_stage in result.stages_run else '?'} "
+                f"of {len(ALL_STAGES)})\n"
+            )
+            _print_diag_json(result.errors())
+    return EX_OK if result.ok() else EX_VALIDATE
 
 
 # ---------------------------------------------------------------------------
@@ -216,20 +333,21 @@ def aeoncheck(argv: Optional[List[str]] = None) -> int:
 
 def aeonfmt(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeonfmt", description="Canonically format Aeon source")
-    ap.add_argument("source")
+    _add_common(ap)
+    ap.add_argument("source", help="Path to an Aeon source file, or - for stdin")
     ap.add_argument("-w", "--write", action="store_true", help="write result back in place")
     ap.add_argument("--check", action="store_true",
-                    help="exit 0 iff input already canonical")
+                    help="exit 0 iff input already canonical (exit 5 otherwise)")
     args = ap.parse_args(argv)
 
-    text = _read_source(args.source)
+    text = _read_source_or_stdin(args.source)
     module = parse(text, filename=args.source, module_id=args.source)
     formatted = format_module(module)
 
     if args.check:
         if text != formatted:
             sys.stderr.write("aeonfmt: not canonical\n")
-            return 5
+            return EX_FORMAT
         return 0
     if args.write:
         Path(args.source).write_text(formatted, encoding="utf-8")
@@ -245,6 +363,7 @@ def aeonfmt(argv: Optional[List[str]] = None) -> int:
 
 def aeonir(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeonir", description="Inspect canonical IR")
+    _add_common(ap)
     ap.add_argument("path", help="Path to a canonical IR file (bytes from aeonc)")
     args = ap.parse_args(argv)
 
@@ -274,15 +393,16 @@ def aeonir(argv: Optional[List[str]] = None) -> int:
 
 def aeongraph(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeongraph", description="Render the semantic graph as DOT")
-    ap.add_argument("source")
+    _add_common(ap)
+    ap.add_argument("source", help="Path to an Aeon source file, or - for stdin")
     args = ap.parse_args(argv)
 
-    text = _read_source(args.source)
+    text = _read_source_or_stdin(args.source)
     module = parse(text, filename=args.source, module_id=args.source)
     res = validate_module(module)
     if not res.ok():
         _print_diag_json(res.errors())
-        return 4
+        return EX_VALIDATE
     g = res.graph
     lines = ["digraph aeon {"]
     for n in g.nodes:
@@ -301,8 +421,28 @@ def aeongraph(argv: Optional[List[str]] = None) -> int:
 
 def aeontest(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeontest", description="Run the conformance suite")
+    _add_common(ap, json_output=True)
     ap.add_argument("--tests-dir", default=None)
+    ap.add_argument("--profile", action="append",
+                    help="Run a specific conformance profile (repeatable)")
     args = ap.parse_args(argv)
+
+    if args.profile:
+        from conformance.runner import full_report
+        here = Path(__file__).resolve().parents[1]
+        tests_root = Path(args.tests_dir) if args.tests_dir else (here / "tests")
+        report = full_report(tests_root, args.profile)
+        if args.json:
+            sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")
+        else:
+            for r in report["results"]:
+                tag = "PASS" if r["passed"] else "FAIL"
+                sys.stdout.write(
+                    f"[{tag}] {r['name']:24s} "
+                    f"pass={r['pass_count']} fail={r['fail_count']} skip={r['skip_count']}\n"
+                )
+            sys.stdout.write(f"Overall: {report['overall_conformance_result']}\n")
+        return EX_OK if report["overall_conformance_result"] == "PASS" else EX_VALIDATE
 
     here = Path(__file__).resolve().parents[1]  # aeon-language/
     tests_dir = args.tests_dir or str(here / "tests")
@@ -323,18 +463,27 @@ def aeontest(argv: Optional[List[str]] = None) -> int:
 
 def aeonreplay(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="aeonreplay", description="Replay a source module twice and diff")
-    ap.add_argument("source")
+    _add_common(ap)
+    ap.add_argument("source", help="Path to an Aeon source file, or - for stdin")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ticks-per-clock", type=int, default=8)
     ap.add_argument("--dimension", type=int, default=4)
     args = ap.parse_args(argv)
 
-    text = _read_source(args.source)
+    text = _read_source_or_stdin(args.source)
     module = parse(text, filename=args.source, module_id=args.source)
     res = validate_module(module)
     if not res.ok():
         _print_diag_json(res.errors())
-        return 4
+        return EX_VALIDATE
+
+    # Refuse replay under an incompatible IR/language version
+    # (mandate §10: aeonreplay must fail clearly).
+    if LANGUAGE_VERSION != "0.1.0-dev":
+        sys.stderr.write(
+            f"aeonreplay: unexpected language version {LANGUAGE_VERSION!r}\n"
+        )
+        return EX_INCOMPAT
     from runtime.scheduler import lower
     from runtime.replay import replay
     ir = lower(module, res.graph, seed=args.seed, ticks_per_clock=args.ticks_per_clock)
@@ -361,6 +510,8 @@ def aeonreplay(argv: Optional[List[str]] = None) -> int:
             out[r.name] = ReferenceContractiveRecursion(
                 dimension=r.dimension or args.dimension, contract=contract,
                 substrate_id=r.name, decay=0.5,
+                declared_input_radius=10.0, declared_state_radius=10.0,
+                declared_projection_scale_upper=1.0,
             )
         return out
 
@@ -372,7 +523,7 @@ def aeonreplay(argv: Optional[List[str]] = None) -> int:
         "outputs_a": len(report.outcome_a.outputs),
         "outputs_b": len(report.outcome_b.outputs),
     }, sort_keys=True, indent=2) + "\n")
-    return 0 if report.identical else 6
+    return EX_OK if report.identical else EX_REPLAY_DIFF
 
 
 # ---------------------------------------------------------------------------
