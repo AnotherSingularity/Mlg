@@ -1,0 +1,147 @@
+{
+  "application_version": "0.1.0",
+  "categories": [
+    "language_conformance",
+    "source_conformance",
+    "runtime_determinism",
+    "causal_correctness",
+    "snapshot_fidelity",
+    "replay_fidelity",
+    "contraction_status",
+    "boundedness",
+    "numerical_stability",
+    "training_reproducibility",
+    "inference_consistency",
+    "feedback_neutrality",
+    "feedback_boundedness",
+    "performance",
+    "resource_use"
+  ],
+  "evaluation_schema_version": "0.1.0",
+  "language_certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
+  "profiles": {
+    "CONFIG": {
+      "category": "language_conformance",
+      "description": "Configuration schemas + language lock",
+      "fixtures": [
+        "tests/test_config_and_lock.py"
+      ],
+      "gate": "Gate L-A",
+      "name": "CONFIG",
+      "required": true
+    },
+    "FEEDBACK": {
+      "category": "feedback_neutrality",
+      "description": "Zero-gate neutrality + capability negotiation + bounded activation",
+      "fixtures": [
+        "tests/test_runtime_and_persistence.py::test_zero_gate_feedback_is_neutral",
+        "tests/test_runtime_and_persistence.py::test_nonzero_gate_requires_capability_negotiation",
+        "tests/test_runtime_and_persistence.py::test_nonzero_gate_with_negotiated_capability_alters_outputs"
+      ],
+      "gate": "Gate L-G",
+      "name": "FEEDBACK",
+      "required": true
+    },
+    "FULL_APPLICATION": {
+      "category": "inference_consistency",
+      "description": "Every test in the aeon-application test suite",
+      "fixtures": [
+        "tests/"
+      ],
+      "gate": "Gate L-I",
+      "name": "FULL_APPLICATION",
+      "required": false
+    },
+    "PERSISTENCE": {
+      "category": "snapshot_fidelity",
+      "description": "Snapshot envelope + restore + config validation",
+      "fixtures": [
+        "tests/test_runtime_and_persistence.py::test_snapshot_contains_every_required_field",
+        "tests/test_runtime_and_persistence.py::test_snapshot_round_trip_reproduces_next_transition",
+        "tests/test_runtime_and_persistence.py::test_snapshot_schema_mismatch_rejected",
+        "tests/test_runtime_and_persistence.py::test_snapshot_corrupt_bytes_rejected",
+        "tests/test_runtime_and_persistence.py::test_snapshot_config_mismatch_rejected"
+      ],
+      "gate": "Gate L-F",
+      "name": "PERSISTENCE",
+      "required": true
+    },
+    "PROJECTION": {
+      "category": "boundedness",
+      "description": "Typed projections + bound enforcement",
+      "fixtures": [
+        "tests/test_sources_projections_recursion.py::test_all_four_projections_registered",
+        "tests/test_sources_projections_recursion.py::test_projection_apply_scales_within_bound",
+        "tests/test_sources_projections_recursion.py::test_projection_scale_bound_enforced",
+        "tests/test_sources_projections_recursion.py::test_projection_input_dim_mismatch_raises",
+        "tests/test_sources_projections_recursion.py::test_projection_descriptor_is_stable_json"
+      ],
+      "gate": "Gate L-C",
+      "name": "PROJECTION",
+      "required": true
+    },
+    "RECURSION": {
+      "category": "contraction_status",
+      "description": "Application contractive substrate + certificate scope",
+      "fixtures": [
+        "tests/test_sources_projections_recursion.py::test_recursion_substrate_produces_proven_projected_scope",
+        "tests/test_sources_projections_recursion.py::test_recursion_substrate_deterministic",
+        "tests/test_sources_projections_recursion.py::test_recursion_source_disagreement_not_hidden"
+      ],
+      "gate": "Gate L-D",
+      "name": "RECURSION",
+      "required": true
+    },
+    "SCHEDULER": {
+      "category": "runtime_determinism",
+      "description": "Multi-clock scheduler + window closure + event log",
+      "fixtures": [
+        "tests/test_runtime_and_persistence.py::test_run_reference_produces_outputs_and_events",
+        "tests/test_runtime_and_persistence.py::test_run_is_deterministic"
+      ],
+      "gate": "Gate L-E",
+      "name": "SCHEDULER",
+      "required": true
+    },
+    "SOURCE": {
+      "category": "source_conformance",
+      "description": "AttentionSource + PersistentRecurrentSource port conformance",
+      "fixtures": [
+        "tests/test_sources_projections_recursion.py::test_attention_source_offers_required_and_attention_map",
+        "tests/test_sources_projections_recursion.py::test_attention_source_step_deterministic",
+        "tests/test_sources_projections_recursion.py::test_attention_source_reads_and_unavailable",
+        "tests/test_sources_projections_recursion.py::test_attention_source_snapshot_restore_round_trip",
+        "tests/test_sources_projections_recursion.py::test_attention_source_input_dim_mismatch_raises",
+        "tests/test_sources_projections_recursion.py::test_recurrent_source_offers_required_plus_matrix_and_decay",
+        "tests/test_sources_projections_recursion.py::test_recurrent_source_step_deterministic_and_bounded",
+        "tests/test_sources_projections_recursion.py::test_recurrent_source_snapshot_restore_reproduces_next",
+        "tests/test_sources_projections_recursion.py::test_recurrent_matrix_read_and_dimension_read",
+        "tests/test_sources_projections_recursion.py::test_recurrent_source_capability_negotiation_passes_required"
+      ],
+      "gate": "Gate L-B",
+      "name": "SOURCE",
+      "required": true
+    },
+    "TRAINING": {
+      "category": "training_reproducibility",
+      "description": "Deterministic training fixture + loss decomposition + optimizer transition",
+      "fixtures": [
+        "tests/test_training.py"
+      ],
+      "gate": "Gate L-H",
+      "name": "TRAINING",
+      "required": true
+    }
+  },
+  "required_profiles": [
+    "CONFIG",
+    "SOURCE",
+    "PROJECTION",
+    "RECURSION",
+    "SCHEDULER",
+    "FEEDBACK",
+    "PERSISTENCE",
+    "TRAINING"
+  ],
+  "schema_version": "0.1.0"
+}
