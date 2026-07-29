@@ -28,3 +28,35 @@ jobs:
         working-directory: aeon-application
         run: |
           python -m pytest tests/ -q
+
+  app_clean_install:
+    name: aeon-app clean install + CLI smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install aeon-language + aeon-application from source
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./aeon-language
+          python -m pip install --no-deps ./aeon-application
+      - name: Verify all eight aeon-app-* console scripts
+        run: |
+          for cmd in aeon-app-check aeon-app-compile aeon-app-run \
+                    aeon-app-train aeon-app-evaluate aeon-app-snapshot \
+                    aeon-app-replay aeon-app-inspect; do
+            command -v "$cmd" || { echo "MISSING: $cmd"; exit 1; }
+          done
+      - name: Smoke: check + inspect + run + train
+        run: |
+          aeon-app-check
+          aeon-app-inspect
+          aeon-app-run --ticks 2
+          aeon-app-train --steps 1 --ticks 4
+      - name: Smoke: snapshot + replay round-trip
+        run: |
+          aeon-app-snapshot --out /tmp/session.snap --ticks 2
+          aeon-app-replay   --snapshot /tmp/session.snap --ticks 2
