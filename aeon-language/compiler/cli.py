@@ -531,6 +531,78 @@ def aeonreplay(argv: Optional[List[str]] = None) -> int:
 # ---------------------------------------------------------------------------
 
 
+def aeonmigrate(argv: Optional[List[str]] = None) -> int:
+    ap = argparse.ArgumentParser(prog="aeonmigrate",
+                                 description="Migrate a versioned Aeon artifact to a target version")
+    _add_common(ap, json_output=True)
+    ap.add_argument("input", help="Path to the input JSON artifact, or - for stdin")
+    ap.add_argument("--artifact-kind", required=True,
+                    choices=["semantic_graph", "canonical_ir", "snapshot",
+                             "certificate", "conformance_manifest",
+                             "backend_contract", "source_module"])
+    ap.add_argument("--from-version", default=None,
+                    help="Override the artifact's declared source version")
+    ap.add_argument("--to-version", default="0.1.0",
+                    help="Target version (default: 0.1.0)")
+    ap.add_argument("--check", action="store_true",
+                    help="Report the migration outcome without writing output")
+    ap.add_argument("-o", "--output", help="Output path for the migrated artifact")
+    ap.add_argument("--force", action="store_true",
+                    help="Overwrite an existing output file")
+    args = ap.parse_args(argv)
+
+    from aeon.migration import ArtifactKind, MigrationOutcome
+    from aeon.migration_registry import DEFAULT_REGISTRY
+
+    kind = ArtifactKind(args.artifact_kind)
+    text = _read_source_or_stdin(args.input)
+    artifact = json.loads(text)
+    if args.from_version is not None:
+        from aeon.migration import AEON_VERSION_KEY
+        artifact = dict(artifact)
+        artifact[AEON_VERSION_KEY] = args.from_version
+
+    result = DEFAULT_REGISTRY.migrate(kind, artifact, args.to_version)
+
+    payload = {
+        "outcome": result.outcome.value,
+        "path": list(result.path),
+        "artifact_kind": kind.value,
+        "target_version": args.to_version,
+        "ok": result.ok(),
+        "diagnostics": [
+            {"code": d.code, "message": d.message, "field_path": d.field_path}
+            for d in result.diagnostics
+        ],
+    }
+
+    if args.check or args.output is None:
+        if args.json:
+            sys.stdout.write(json.dumps(payload, sort_keys=True, indent=2) + "\n")
+        else:
+            sys.stdout.write(f"{result.outcome.value}: path={list(result.path)}\n")
+            for d in result.diagnostics:
+                sys.stderr.write(f"  {d.code}: {d.message}\n")
+        return EX_OK if result.ok() else EX_VALIDATE
+
+    if not result.ok():
+        if args.json:
+            sys.stdout.write(json.dumps(payload, sort_keys=True, indent=2) + "\n")
+        else:
+            for d in result.diagnostics:
+                sys.stderr.write(f"  {d.code}: {d.message}\n")
+        return EX_VALIDATE
+
+    rc = _refuse_overwrite(args.output, args.force)
+    if rc is not None:
+        return rc
+    Path(args.output).write_bytes(result.canonical_bytes or b"")
+    sys.stderr.write(f"aeonmigrate: wrote {args.output} ({result.outcome.value})\n")
+    if args.json:
+        sys.stdout.write(json.dumps(payload, sort_keys=True, indent=2) + "\n")
+    return EX_OK
+
+
 TOOLS = {
     "aeonc": aeonc,
     "aeonrun": aeonrun,
@@ -540,6 +612,7 @@ TOOLS = {
     "aeongraph": aeongraph,
     "aeontest": aeontest,
     "aeonreplay": aeonreplay,
+    "aeonmigrate": aeonmigrate,
 }
 
 

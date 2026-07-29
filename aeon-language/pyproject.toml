@@ -25,6 +25,7 @@ aeonir = "compiler.cli:aeonir"
 aeongraph = "compiler.cli:aeongraph"
 aeontest = "compiler.cli:aeontest"
 aeonreplay = "compiler.cli:aeonreplay"
+aeonmigrate = "compiler.cli:aeonmigrate"
 
 [tool.setuptools]
 package-dir = {"aeon" = "standard_library/aeon", "compiler" = "compiler", "runtime" = "runtime", "backends" = "backends", "conformance" = "conformance"}

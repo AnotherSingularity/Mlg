@@ -1,0 +1,12 @@
+{
+  "__aeon_artifact_version__": "0.0.0",
+  "graph_id": "synthetic-graph-a",
+  "backend_id": "aeon.backends.python/0.0.0",
+  "versions": {
+    "language": "0.0.0",
+    "ir": "0.0.0",
+    "stdlib": "0.0.0"
+  },
+  "state": {"kind": "RecursionState", "payload": [0.0, 0.0, 0.0, 0.0]},
+  "contracts": ["contract.contractive.r"]
+}

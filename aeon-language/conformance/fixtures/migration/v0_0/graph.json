@@ -1,0 +1,18 @@
+{
+  "__aeon_artifact_version__": "0.0.0",
+  "module_id": "synthetic-module-a",
+  "nodes": [
+    {"id": "source.t", "type": "source", "attrs": {"impl": "T"}},
+    {"id": "recursion.r", "type": "recursion", "attrs": {"dim": 4}}
+  ],
+  "directed_edges": [
+    {"id": "e0", "from": "source.t", "to": "recursion.r", "edge_kind": "projection"}
+  ],
+  "clock_domains": [
+    {"id": "token", "kind": "Token"},
+    {"id": "integration", "kind": "Integration"}
+  ],
+  "ownership_map": [
+    {"binding": "state.recursion.r", "owner": "recursion.r", "ownership": "own"}
+  ]
+}

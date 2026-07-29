@@ -1,0 +1,10 @@
+{
+  "__aeon_artifact_version__": "0.0.0",
+  "module_id": "synthetic-ir-a",
+  "language_version": "0.0.0",
+  "digest_method": "blake2b-256",
+  "ops": [
+    {"op": "CLOCK_DEFINE", "args": ["token", "Token"]},
+    {"op": "RECURSION_INIT", "args": ["r", {"dim": 4}, 0]}
+  ]
+}
