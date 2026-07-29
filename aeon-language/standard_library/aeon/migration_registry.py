@@ -193,4 +193,6 @@ def build_default_registry() -> MigrationRegistry:
 
 DEFAULT_REGISTRY = build_default_registry()
 
-MIGRATION_FRAMEWORK_VERSION = "0.1.0"
+# MIGRATION_FRAMEWORK_VERSION is re-exported from aeon.__init__ for
+# the single-authoritative-source rule.
+from . import MIGRATION_FRAMEWORK_VERSION  # noqa: F401,E402

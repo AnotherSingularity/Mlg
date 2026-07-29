@@ -121,3 +121,54 @@ jobs:
               --profile CORE --profile SOURCE_REQUIRED --profile SOURCE_RICH \
               --profile RECURSION_SUBSTRATE --profile COMPILER --profile RUNTIME \
               --profile BACKEND --profile STDLIB
+
+  # ---------------------------------------------------------------------
+  # Migration fixtures and proof-soundness tests must run explicitly
+  # so a regression in either subsystem is a red job (v0.1 final closure
+  # C11, C12).
+  # ---------------------------------------------------------------------
+  migration_and_soundness:
+    name: migration + proof soundness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        working-directory: aeon-language
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest numpy
+      - name: Migration fixtures (in-process + fresh-process matrix)
+        working-directory: aeon-language
+        run: |
+          PYTHONPATH="$(pwd)/standard_library:$(pwd)" \
+            python -m pytest tests/test_migration.py tests/test_migration_fresh_process.py -q
+      - name: Contraction proof soundness (verifier + tamper)
+        working-directory: aeon-language
+        run: |
+          PYTHONPATH="$(pwd)/standard_library:$(pwd)" \
+            python -m pytest tests/test_verifier.py tests/test_verifier_soundness.py -q
+
+  # ---------------------------------------------------------------------
+  # Release manifest verification (v0.1 final closure C13).
+  # ---------------------------------------------------------------------
+  release_manifest:
+    name: release manifest verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        working-directory: aeon-language
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest numpy
+      - name: Verify release manifest round-trip
+        working-directory: aeon-language
+        run: |
+          PYTHONPATH="$(pwd)/standard_library:$(pwd)" \
+            python -m pytest tests/test_release_manifest.py -q

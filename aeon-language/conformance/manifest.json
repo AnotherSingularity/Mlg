@@ -1,8 +1,8 @@
 {
-  "schema_version": "0.1.0-dev",
-  "language_version": "0.1.0-dev",
-  "ir_version": "0.1.0-dev",
-  "instruction_set_version": "0.1.0-dev",
+  "schema_version": "0.1.0",
+  "language_version": "0.1.0",
+  "ir_version": "0.1.0",
+  "instruction_set_version": "0.1.0",
   "profiles": {
     "CORE": {
       "description": "Serialization, identity, canonicalization, contraction semantics.",

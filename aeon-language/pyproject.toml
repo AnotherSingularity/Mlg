@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aeon-language"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Aeon Language: framework-neutral kernel, compiler, reference runtime, and conformance suite."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,13 +28,13 @@ aeonreplay = "compiler.cli:aeonreplay"
 aeonmigrate = "compiler.cli:aeonmigrate"
 
 [tool.setuptools]
-package-dir = {"aeon" = "standard_library/aeon", "compiler" = "compiler", "runtime" = "runtime", "backends" = "backends", "conformance" = "conformance"}
+package-dir = {"aeon" = "standard_library/aeon", "compiler" = "compiler", "runtime" = "runtime", "backends" = "backends", "conformance" = "conformance", "release" = "release"}
 
 [tool.setuptools.packages.find]
 where = ["standard_library", "."]
-include = ["aeon", "aeon.*", "compiler", "compiler.*", "runtime", "runtime.*", "backends", "backends.*", "conformance", "conformance.*"]
+include = ["aeon", "aeon.*", "compiler", "compiler.*", "runtime", "runtime.*", "backends", "backends.*", "conformance", "conformance.*", "release", "release.*"]
 exclude = ["tests", "tests.*"]
 
 [tool.setuptools.package-data]
 "aeon" = ["*.json"]
-"conformance" = ["*.json"]
+"conformance" = ["*.json", "fixtures/**/*.json"]
