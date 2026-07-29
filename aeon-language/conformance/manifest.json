@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.1.0-dev",
+  "language_version": "0.1.0-dev",
+  "ir_version": "0.1.0-dev",
+  "instruction_set_version": "0.1.0-dev",
+  "profiles": {
+    "CORE": {
+      "description": "Serialization, identity, canonicalization, contraction semantics.",
+      "required_fixtures": [
+        "tests/test_serialization.py",
+        "tests/test_identity_and_state.py",
+        "tests/test_clock_and_causality.py",
+        "tests/test_capabilities.py",
+        "tests/test_contraction.py",
+        "tests/test_verifier.py",
+        "tests/test_golden_hashes.py"
+      ],
+      "required_capabilities": [],
+      "permitted_variance": {}
+    },
+    "SOURCE_REQUIRED": {
+      "description": "REQUIRED-tier source port contract (VectorRead, VectorDrive, PerTokenStep).",
+      "required_fixtures": [
+        "tests/test_sources.py::test_dummy_vector_source_offers_all_required",
+        "tests/test_sources.py::test_dummy_vector_source_step_deterministic",
+        "tests/test_sources.py::test_dummy_vector_source_step_input_dim_mismatch_raises",
+        "tests/test_sources.py::test_dummy_vector_source_snapshot_restore_round_trip",
+        "tests/test_sources.py::test_dummy_vector_source_unknown_read_returns_unavailable"
+      ],
+      "required_capabilities": ["VectorRead", "VectorDrive", "PerTokenStep"],
+      "permitted_variance": {}
+    },
+    "SOURCE_RICH": {
+      "description": "PROVISIONAL optional-capability negotiation (MatrixRead, LayerRead, DecayControl).",
+      "required_fixtures": [
+        "tests/test_sources.py::test_dummy_rich_source_offers_optional_capabilities",
+        "tests/test_sources.py::test_dummy_rich_source_matrix_read_ready",
+        "tests/test_sources.py::test_dummy_rich_source_layer_out_of_range_unavailable",
+        "tests/test_sources.py::test_rich_source_negotiates_all_offered"
+      ],
+      "required_capabilities": ["MatrixRead", "LayerRead", "DecayControl"],
+      "permitted_variance": {}
+    },
+    "RECURSION_SUBSTRATE": {
+      "description": "Contractive integration + independent verifier.",
+      "required_fixtures": [
+        "tests/test_contraction.py",
+        "tests/test_verifier.py"
+      ],
+      "required_capabilities": [],
+      "permitted_variance": {
+        "numerical_tolerance": 1e-12
+      }
+    },
+    "COMPILER": {
+      "description": "Parser, formatter, type analyzer, staged pipeline.",
+      "required_fixtures": [
+        "tests/test_parser_validator.py",
+        "tests/test_types.py",
+        "tests/test_pipeline.py"
+      ],
+      "required_capabilities": [],
+      "permitted_variance": {}
+    },
+    "RUNTIME": {
+      "description": "Interpreter execution + snapshot/replay determinism.",
+      "required_fixtures": [
+        "tests/test_end_to_end.py"
+      ],
+      "required_capabilities": [],
+      "permitted_variance": {}
+    },
+    "BACKEND": {
+      "description": "Cross-backend differential parity (python vs numpy).",
+      "required_fixtures": [
+        "tests/test_backend_differential.py"
+      ],
+      "required_capabilities": [],
+      "permitted_variance": {
+        "numerical_tolerance": 1e-12
+      }
+    },
+    "STDLIB": {
+      "description": "Every mandated aeon.* public module imports and has stable exports.",
+      "required_fixtures": [
+        "tests/test_stdlib_surface.py"
+      ],
+      "required_capabilities": [],
+      "permitted_variance": {}
+    },
+    "FULL_IMPLEMENTATION": {
+      "description": "All profiles above.",
+      "required_fixtures": ["tests/"],
+      "required_capabilities": ["VectorRead", "VectorDrive", "PerTokenStep"],
+      "permitted_variance": {
+        "numerical_tolerance": 1e-12
+      }
+    }
+  }
+}
