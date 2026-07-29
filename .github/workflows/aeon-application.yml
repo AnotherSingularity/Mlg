@@ -50,13 +50,13 @@ jobs:
                     aeon-app-replay aeon-app-inspect; do
             command -v "$cmd" || { echo "MISSING: $cmd"; exit 1; }
           done
-      - name: Smoke: check + inspect + run + train
+      - name: "Smoke - check + inspect + run + train"
         run: |
           aeon-app-check
           aeon-app-inspect
           aeon-app-run --ticks 2
           aeon-app-train --steps 1 --ticks 4
-      - name: Smoke: snapshot + replay round-trip
+      - name: "Smoke - snapshot + replay round-trip"
         run: |
           aeon-app-snapshot --out /tmp/session.snap --ticks 2
           aeon-app-replay   --snapshot /tmp/session.snap --ticks 2
