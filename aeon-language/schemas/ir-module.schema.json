@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aeon-language/schemas/ir-module.schema.json",
+  "title": "Aeon IR Module",
+  "description": "Canonical envelope of an Aeon IR module (spec 09-CANONICAL-IR.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "aeon_ir_version",
+    "language_version",
+    "instruction_set_version",
+    "digest_method",
+    "module_id",
+    "body"
+  ],
+  "properties": {
+    "aeon_ir_version":         { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?$" },
+    "language_version":        { "type": "string" },
+    "instruction_set_version": { "type": "string" },
+    "digest_method":           { "type": "string", "enum": ["blake2b-256", "sha256"] },
+    "module_id":               { "type": "string", "pattern": "^[0-9a-f]+$" },
+    "body":                    { "$ref": "#/$defs/Body" }
+  },
+  "$defs": {
+    "Body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "aeon_ir_version",
+        "language_version",
+        "instruction_set_version",
+        "digest_method",
+        "declarations",
+        "graph",
+        "contracts",
+        "capabilities",
+        "clocks",
+        "schedule",
+        "instructions"
+      ],
+      "properties": {
+        "aeon_ir_version":         { "type": "string" },
+        "language_version":        { "type": "string" },
+        "instruction_set_version": { "type": "string" },
+        "digest_method":           { "type": "string" },
+        "declarations":            { "type": "array", "items": { "$ref": "#/$defs/Declaration" } },
+        "graph":                   { "$ref": "#/$defs/Graph" },
+        "contracts":               { "type": "array", "items": { "$ref": "#/$defs/Contract" } },
+        "capabilities":            { "type": "array", "items": { "$ref": "#/$defs/Capability" } },
+        "clocks":                  { "type": "array", "items": { "$ref": "#/$defs/Clock" } },
+        "schedule":                { "$ref": "#/$defs/Schedule" },
+        "instructions":            { "type": "array", "items": { "$ref": "#/$defs/Instruction" } }
+      }
+    },
+    "Declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "body"],
+      "properties": {
+        "id":   { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "source_declaration",
+            "recursion_declaration",
+            "projection_declaration",
+            "clock_declaration",
+            "clock_relation",
+            "contract_binding",
+            "window_declaration",
+            "output_declaration",
+            "snapshot_declaration"
+          ]
+        },
+        "body": { "type": "object" }
+      }
+    },
+    "Graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["graph_id", "nodes", "edges", "clock_domains", "ownership_map"],
+      "properties": {
+        "graph_id":      { "type": "string" },
+        "nodes":         { "type": "array", "items": { "$ref": "#/$defs/Node" } },
+        "edges":         { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
+        "clock_domains": { "type": "array", "items": { "$ref": "#/$defs/ClockDomainDecl" } },
+        "ownership_map": { "type": "array", "items": { "$ref": "#/$defs/OwnershipEntry" } }
+      }
+    },
+    "Node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "attributes"],
+      "properties": {
+        "id":         { "type": "string" },
+        "kind":       {
+          "type": "string",
+          "enum": ["source", "recursion", "projection", "clock", "window", "output", "snapshot", "contract"]
+        },
+        "attributes": { "type": "object" }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "to", "edge_kind", "attributes"],
+      "properties": {
+        "id":         { "type": "string" },
+        "from":       { "type": "string" },
+        "to":         { "type": "string" },
+        "edge_kind":  { "type": "string" },
+        "attributes": { "type": "object" }
+      }
+    },
+    "ClockDomainDecl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id":   { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["SourceLocal", "Token", "Integration", "Segment", "UserDefined"]
+        }
+      }
+    },
+    "OwnershipEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binding", "owner", "ownership"],
+      "properties": {
+        "binding":   { "type": "string" },
+        "owner":     { "type": "string" },
+        "ownership": {
+          "type": "string",
+          "enum": ["own", "borrow", "shared_immut", "frozen"]
+        }
+      }
+    },
+    "Contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "body"],
+      "properties": {
+        "id":   { "type": "string" },
+        "kind": { "type": "string" },
+        "body": { "type": "object" }
+      }
+    },
+    "Capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "tier"],
+      "properties": {
+        "name":    { "type": "string" },
+        "version": { "type": "string" },
+        "tier":    { "type": "string", "enum": ["REQUIRED", "OPTIONAL"] }
+      }
+    },
+    "Clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id":   { "type": "string" },
+        "kind": { "type": "string" }
+      }
+    },
+    "Schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "body"],
+      "properties": {
+        "id":   { "type": "string" },
+        "body": { "type": "object" }
+      }
+    },
+    "Instruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["opcode", "operands", "operand_types", "preconditions"],
+      "properties": {
+        "opcode": {
+          "type": "string",
+          "enum": [
+            "STATE_NEW","STATE_READ","STATE_REPLACE","STATE_SNAPSHOT","STATE_RESTORE","STATE_RELEASE",
+            "SIGNAL_FORM","SIGNAL_PROJECT","SIGNAL_ROUTE","SIGNAL_BUFFER","SIGNAL_AGGREGATE","SIGNAL_EMIT",
+            "SOURCE_INIT","SOURCE_STEP","SOURCE_READ","SOURCE_DRIVE","SOURCE_QUERY_CAPABILITY",
+            "RECURSION_INIT","RECURSION_PROJECT","RECURSION_INTEGRATE","RECURSION_READ","RECURSION_FEEDBACK",
+            "CLOCK_DEFINE","CLOCK_TICK","CLOCK_RELATE","WINDOW_OPEN","WINDOW_CLOSE",
+            "CONTRACT_BIND","CONTRACT_CHECK","CONTRACT_REQUIRE","CONTRACT_REJECT","CONTRACT_CERTIFY",
+            "NODE_ENTER","NODE_EXIT","EDGE_TRANSFER","FORK","JOIN","SELECT",
+            "LINEAGE_ATTACH","LINEAGE_DERIVE","PROVENANCE_RECORD","CANONICALIZE","DIGEST"
+          ]
+        },
+        "operands":       { "type": "array" },
+        "operand_types":  { "type": "array", "items": { "type": "string" } },
+        "preconditions":  { "type": "array", "items": { "type": "string" } },
+        "clock":          { "type": "string" },
+        "clock_position": { "type": "integer", "minimum": 0 },
+        "contract":       { "type": "string" },
+        "result_binding": { "type": "string" },
+        "source_span":    { "type": "string" }
+      }
+    }
+  }
+}
