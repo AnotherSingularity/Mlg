@@ -1,0 +1,38 @@
+# Reference example: two independently evolving sources project into
+# a contractive Recursion substrate.
+#
+# The scheduler advances the token clock once per iteration (each
+# source steps and its output is projected into the substrate),
+# followed by an integration step on the integration clock.
+
+source transformer: TransformerSource {
+    clock: token
+    requires: VectorRead
+    offers: PerTokenStep, VectorDrive, VectorRead
+}
+
+source persistence: RecurrentSource {
+    clock: token
+    requires: VectorRead
+    offers: DecayControl, MatrixRead, PerTokenStep, VectorDrive, VectorRead
+}
+
+recursion continuity: ContractiveManifold {
+    dimension: 4
+    clock: integration
+    contraction_margin: 0.9
+}
+
+project persistence.state into continuity
+project transformer.output into continuity
+
+schedule {
+    every token {
+        step persistence
+        step transformer
+    }
+
+    every integration {
+        integrate continuity
+    }
+}
