@@ -478,10 +478,13 @@ def aeonreplay(argv: Optional[List[str]] = None) -> int:
         return EX_VALIDATE
 
     # Refuse replay under an incompatible IR/language version
-    # (mandate §10: aeonreplay must fail clearly).
-    if LANGUAGE_VERSION != "0.1.0-dev":
+    # (mandate §10: aeonreplay must fail clearly). The current v0.1
+    # runtime is compatible only with the "0.1.x" language line.
+    supported_prefix = "0.1."
+    if not LANGUAGE_VERSION.startswith(supported_prefix):
         sys.stderr.write(
-            f"aeonreplay: unexpected language version {LANGUAGE_VERSION!r}\n"
+            f"aeonreplay: unsupported language version "
+            f"{LANGUAGE_VERSION!r} (expected {supported_prefix}x)\n"
         )
         return EX_INCOMPAT
     from runtime.scheduler import lower
