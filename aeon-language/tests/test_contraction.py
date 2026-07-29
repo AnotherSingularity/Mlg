@@ -54,6 +54,8 @@ def test_contract_margin_bounds():
 
 
 def test_integrate_produces_all_certificate_fields():
+    # Substrate constructed WITHOUT declared bounds — the verifier
+    # correctly downgrades to BOUNDED_CONTRACTIVE (Phase 0.1 §3).
     sub = ReferenceContractiveRecursion(4, _contract(0.9))
     state = sub.initialize({}, 0)
     frame, pc = _one_input()
@@ -63,12 +65,30 @@ def test_integrate_produces_all_certificate_fields():
     c = result.contraction_certificate
     assert c.metric is Metric.LINF
     assert c.requested_margin == 0.9
-    assert c.measured_upper_bound == 0.9
+    # measured_upper_bound is now the verifier's independently
+    # computed state Lipschitz (margin * decay = 0.9 * 0.5 = 0.45).
+    assert c.measured_upper_bound == 0.9 * 0.5
     assert c.arithmetic_precision.element_type == "float64"
     assert c.certification_method is CertificationMethod.SYMBOLIC_PARAMETERIZATION
-    assert c.result is ContractionResult.PROVEN_CONTRACTIVE
+    # No domain bounds declared -> BOUNDED_CONTRACTIVE, not PROVEN.
+    assert c.result is ContractionResult.BOUNDED_CONTRACTIVE
     assert c.consumed_inputs, "consumed_inputs must be recorded"
     assert c.clock_position.domain_id == "integration"
+
+
+def test_integrate_with_declared_bounds_is_proven():
+    sub = ReferenceContractiveRecursion(
+        4, _contract(0.9),
+        declared_input_radius=10.0,
+        declared_state_radius=10.0,
+        declared_projection_scale_upper=1.0,
+    )
+    state = sub.initialize({}, 0)
+    frame, pc = _one_input()
+    m = sub.project(frame, pc)
+    integ = ClockDomain("integration", ClockKind.INTEGRATION).position(1)
+    result = sub.integrate([m], state, integ)
+    assert result.contraction_certificate.result is ContractionResult.PROVEN_CONTRACTIVE
 
 
 def test_not_proven_distinct_from_violated():

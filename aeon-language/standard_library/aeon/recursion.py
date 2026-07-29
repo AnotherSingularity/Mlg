@@ -15,6 +15,9 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Generic, Iterable, Mapping, Optional, Protocol, Sequence, Tuple, TypeVar
 
+# Type-checking-only import to avoid a circular dependency at import
+# time. The verifier is imported inside integrate() at call time.
+
 from .clock import ClockPosition
 from .contraction import (
     CertificationMethod,
@@ -205,7 +208,11 @@ class ReferenceContractiveRecursion:
 
     def __init__(self, dimension: int, contract: Contractive,
                  substrate_id: str = "recursion.reference/0.1.0-dev",
-                 decay: float = 0.5):
+                 decay: float = 0.5,
+                 *,
+                 declared_input_radius: Optional[float] = None,
+                 declared_state_radius: Optional[float] = None,
+                 declared_projection_scale_upper: Optional[float] = None):
         if dimension <= 0:
             raise ValueError("dimension must be positive")
         if not (0.0 <= decay <= 1.0):
@@ -221,6 +228,13 @@ class ReferenceContractiveRecursion:
         self.substrate_id = substrate_id
         self.decay = decay
         self.contract_version = SemVer(0, 1, 0, "dev")
+        # Domain bounds declared by the constructor caller. When
+        # omitted the substrate MAY only claim BOUNDED_CONTRACTIVE
+        # (verifier downgrades). Declaring bounds is what allows the
+        # verifier to upgrade to PROVEN_CONTRACTIVE.
+        self.declared_input_radius = declared_input_radius
+        self.declared_state_radius = declared_state_radius
+        self.declared_projection_scale_upper = declared_projection_scale_upper
 
     # -- protocol methods -------------------------------------------------
 
@@ -272,21 +286,58 @@ class ReferenceContractiveRecursion:
             for s, a in zip(state.payload, aggregate)
         )
 
-        # Numerical sanity: reject NaN/Inf that could have arisen.
-        result = ContractionResult.PROVEN_CONTRACTIVE
-        for v in next_payload:
-            if v != v or math.isinf(v):
-                result = ContractionResult.NUMERICALLY_INVALID
-                break
+        # Numerical sanity: detect NaN/Inf that would corrupt any
+        # certificate the verifier could issue.
+        numerically_invalid = any(
+            v != v or math.isinf(v) for v in next_payload
+        )
 
         # Consumed input digests (sorted for canonical determinism).
         consumed = tuple(sorted(inp.id.digest for inp in inputs))
+
+        # Independent verification: hand the transition and its
+        # declared domain bounds to aeon.verifier and let it
+        # recompute the bound. The substrate MUST NOT emit its own
+        # status field into the certificate — that is now the
+        # verifier's job.
+        from .verifier import (
+            DomainBounds,
+            TransitionDefinition,
+            VerifierInput,
+            verify,
+        )
+        report = verify(VerifierInput(
+            transition=TransitionDefinition(
+                kind="linear_scaled_convex_mix",
+                parameters={"decay": decay, "margin": margin,
+                            "dimension": self.dimension},
+            ),
+            contract=self.contract,
+            domain=DomainBounds(
+                input_radius=self.declared_input_radius,
+                state_radius=self.declared_state_radius,
+                projection_scale_upper=self.declared_projection_scale_upper,
+            ),
+        ))
+
+        if numerically_invalid:
+            result = ContractionResult.NUMERICALLY_INVALID
+            measured = None
+            reason = "NaN/Inf detected in next_payload"
+            # Per 11-ERROR-MODEL §7: a partial/corrupted execution
+            # MUST NOT produce a successor visible to downstream
+            # consumers; the pre-transition state remains current.
+            next_payload = state.payload
+        else:
+            result = report.result
+            measured = report.computed_upper_bound
+            reason = report.reason
 
         cert = ContractionCertificate(
             contract_version=self.contract_version,
             metric=self.contract.metric,
             requested_margin=margin,
-            measured_upper_bound=margin,  # symbolic upper bound
+            measured_upper_bound=measured,
             numerical_tolerance=self.contract.numerical_tolerance,
             arithmetic_precision=self.contract.precision_policy,
             certification_method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
@@ -296,29 +347,43 @@ class ReferenceContractiveRecursion:
             method_params={
                 "parameterization": "linear_scaled_convex_mix",
                 "decay": decay,
+                "verifier": "aeon.verifier/0.1.0-dev",
+                "verifier_reason": reason,
             },
         )
 
-        next_state_ident = make_identity("recursion_state", {
-            "substrate": self.substrate_id,
-            "parent": state.id.digest,
-            "payload": list(next_payload),
-            "clock_domain_id": clock_position.domain_id,
-            "clock_tick": clock_position.tick,
-            "consumed_inputs": list(consumed),
-        })
-        next_state = RecursionState(
-            id=next_state_ident,
-            payload=next_payload,
-            clock_position=clock_position,
-            dimension=self.dimension,
-            validity=(Validity.VALID
-                      if result in (ContractionResult.PROVEN_CONTRACTIVE,
-                                    ContractionResult.BOUNDED_CONTRACTIVE)
-                      else Validity.INVALID
-                      if result is ContractionResult.NUMERICALLY_INVALID
-                      else Validity.UNCERTIFIED),
-        )
+        if result is not ContractionResult.NUMERICALLY_INVALID:
+            next_state_ident = make_identity("recursion_state", {
+                "substrate": self.substrate_id,
+                "parent": state.id.digest,
+                "payload": list(next_payload),
+                "clock_domain_id": clock_position.domain_id,
+                "clock_tick": clock_position.tick,
+                "consumed_inputs": list(consumed),
+            })
+        else:
+            next_state_ident = state.id
+        if result is ContractionResult.NUMERICALLY_INVALID:
+            # The "next" state is the unchanged prior state, but its
+            # validity is marked INVALID for downstream consumers.
+            next_state = RecursionState(
+                id=state.id,
+                payload=state.payload,
+                clock_position=state.clock_position,
+                dimension=state.dimension,
+                validity=Validity.INVALID,
+            )
+        else:
+            next_state = RecursionState(
+                id=next_state_ident,
+                payload=next_payload,
+                clock_position=clock_position,
+                dimension=self.dimension,
+                validity=(Validity.VALID
+                          if result in (ContractionResult.PROVEN_CONTRACTIVE,
+                                        ContractionResult.BOUNDED_CONTRACTIVE)
+                          else Validity.UNCERTIFIED),
+            )
 
         # source_contributions: L∞ magnitude per source
         by_source: dict[str, list[str]] = {}
@@ -336,7 +401,11 @@ class ReferenceContractiveRecursion:
             for src in sorted(by_source.keys())
         )
 
-        outputs = (Emission(payload=next_payload, clock_position=clock_position),)
+        # Do not emit a corrupted payload as an output.
+        emission_payload = (state.payload
+                            if result is ContractionResult.NUMERICALLY_INVALID
+                            else next_payload)
+        outputs = (Emission(payload=emission_payload, clock_position=clock_position),)
 
         transition_cert: Certificate[RecursionState] = Certificate(
             contract_id="Contractive",

@@ -62,7 +62,14 @@ def _sources_factory():
 
 
 def _substrates_factory():
-    return {"continuity": ReferenceContractiveRecursion(4, _mk_contract(), "continuity", 0.5)}
+    # Declared domain bounds so the verifier can upgrade the result
+    # from BOUNDED_CONTRACTIVE to PROVEN_CONTRACTIVE.
+    return {"continuity": ReferenceContractiveRecursion(
+        4, _mk_contract(), "continuity", 0.5,
+        declared_input_radius=10.0,
+        declared_state_radius=10.0,
+        declared_projection_scale_upper=1.0,
+    )}
 
 
 def test_compile_and_run_produces_certificates():
