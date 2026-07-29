@@ -299,13 +299,21 @@ class ReferenceContractiveRecursion:
         # declared domain bounds to aeon.verifier and let it
         # recompute the bound. The substrate MUST NOT emit its own
         # status field into the certificate — that is now the
-        # verifier's job.
+        # verifier's job. C12: the verifier is invoked with
+        # ArithmeticKind.EXACT_RATIONAL so PROVEN_CONTRACTIVE
+        # verdicts are sound.
+        from .contraction import ContractionScope
         from .verifier import (
+            ArithmeticKind,
             DomainBounds,
             TransitionDefinition,
             VerifierInput,
             verify,
         )
+        # The reference substrate certifies only the isolated
+        # Recursion core map (mandate §3.4). A larger scope would
+        # require projection and feedback bounds we do not yet
+        # verify.
         report = verify(VerifierInput(
             transition=TransitionDefinition(
                 kind="linear_scaled_convex_mix",
@@ -318,6 +326,8 @@ class ReferenceContractiveRecursion:
                 state_radius=self.declared_state_radius,
                 projection_scale_upper=self.declared_projection_scale_upper,
             ),
+            arithmetic=ArithmeticKind.EXACT_RATIONAL,
+            scope=ContractionScope.RECURSION_CORE,
         ))
 
         if numerically_invalid:
@@ -340,14 +350,20 @@ class ReferenceContractiveRecursion:
             measured_upper_bound=measured,
             numerical_tolerance=self.contract.numerical_tolerance,
             arithmetic_precision=self.contract.precision_policy,
-            certification_method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            certification_method=(
+                CertificationMethod.EXACT_RATIONAL_ARITHMETIC
+                if result is ContractionResult.PROVEN_CONTRACTIVE
+                else CertificationMethod.SYMBOLIC_PARAMETERIZATION
+            ),
             result=result,
             consumed_inputs=consumed,
             clock_position=clock_position,
+            certified_scope=report.certified_scope,
+            arithmetic_kind=report.arithmetic.value,
             method_params={
                 "parameterization": "linear_scaled_convex_mix",
                 "decay": decay,
-                "verifier": "aeon.verifier/0.1.0-dev",
+                "verifier": "aeon.verifier/0.1.0",
                 "verifier_reason": reason,
             },
         )

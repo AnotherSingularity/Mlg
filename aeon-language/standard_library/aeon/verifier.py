@@ -1,32 +1,41 @@
-"""aeon.verifier — independent contraction verifier.
+"""aeon.verifier — independent contraction verifier with SOUND proof rules.
 
-Recomputes the contraction bound for a declared transition rather
-than trusting a status field emitted by the transition being
-certified. Implements the correction from Phase 0.1 mandate §3.
+Implements the Phase 0.1 §3 correction plus the v0.1 final closure
+§3 mandate: PROVEN_CONTRACTIVE is a **sound** claim. Ordinary
+float64 arithmetic can round an estimated upper bound downward,
+therefore float64 alone MUST NOT establish PROVEN_CONTRACTIVE
+(final mandate §3.1).
 
-Verifier scope ("proof boundary" per mandate §3.1) for the
-reference `ReferenceContractiveRecursion`:
+Sound methods available in v0.1:
 
-    the isolated Recursion map: covered
-    the source-to-Recursion projection: bound-checked, not proven
-    the complete integration transition: BOUNDED under bounded inputs
-    the integration-plus-feedback loop: not covered
+- ``ExactRational`` — for closed-form linear parameterizations
+  whose bound is a rational function of rational parameters.
+  Computes ``margin * decay`` in Python ``Fraction`` and compares
+  ``state_lip < margin`` exactly. This is the only method that
+  yields PROVEN_CONTRACTIVE in v0.1.
 
-The verifier consumes a `Contractive` contract plus the
-transition's parameter and domain bounds and produces one of the
-five `ContractionResult` tags. It does not trust the emitter.
+- ``Float64`` — the numerical evaluation path. Produces at most
+  BOUNDED_CONTRACTIVE, never PROVEN_CONTRACTIVE.
+
+Everything else (nonlinearities, gating, residuals, feedback
+loops, general recurrent operators) is not covered by v0.1's
+proof surface and produces NOT_PROVEN by default; see
+``ContractionScope`` for the exact certified-scope reporting.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from enum import Enum
+from fractions import Fraction
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from .contraction import (
     CertificationMethod,
     ContractionCertificate,
     ContractionResult,
+    ContractionScope,
     Contractive,
     Metric,
     PrecisionPolicy,
@@ -70,11 +79,21 @@ class DomainBounds:
     projection_scale_upper: Optional[float] = None
 
 
+class ArithmeticKind(Enum):
+    """The arithmetic used to establish the bound."""
+
+    EXACT_RATIONAL = "ExactRational"
+    FLOAT64 = "Float64"
+    INTERVAL = "Interval"  # reserved for future implementation
+
+
 @dataclass(frozen=True)
 class VerifierInput:
     transition: TransitionDefinition
     contract: Contractive
     domain: DomainBounds
+    arithmetic: ArithmeticKind = ArithmeticKind.EXACT_RATIONAL
+    scope: ContractionScope = ContractionScope.RECURSION_CORE
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +108,8 @@ class VerifierReport:
     method: CertificationMethod
     reason: str
     checked_bounds: Mapping[str, Any] = field(default_factory=dict)
+    arithmetic: ArithmeticKind = ArithmeticKind.FLOAT64
+    certified_scope: ContractionScope = ContractionScope.RECURSION_CORE
 
     def to_certificate(self, contract: Contractive, *,
                        contract_version, consumed_inputs: Tuple[str, ...],
@@ -104,12 +125,46 @@ class VerifierReport:
             result=self.result,
             consumed_inputs=consumed_inputs,
             clock_position=clock_position,
+            certified_scope=self.certified_scope,
+            arithmetic_kind=self.arithmetic.value,
             method_params={
-                "verifier": "aeon.verifier/0.1.0-dev",
+                "verifier": "aeon.verifier/0.1.0",
                 "reason": self.reason,
                 **self.checked_bounds,
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Rational conversion utilities
+# ---------------------------------------------------------------------------
+
+
+def _to_exact_fraction(value: Any) -> Optional[Fraction]:
+    """Best-effort exact conversion. Returns None if the value cannot
+    be represented in Fraction without loss.
+
+    - int and Fraction: exact.
+    - str "p/q" or decimal string: exact via Fraction(str).
+    - float: represented EXACTLY as a dyadic rational
+      (``Fraction(float)`` does not round). This is exact but the
+      value may not equal the decimal a human typed. We consider it
+      exact for the arithmetic that follows.
+    """
+    if isinstance(value, Fraction):
+        return value
+    if isinstance(value, int):
+        return Fraction(value)
+    if isinstance(value, str):
+        try:
+            return Fraction(value)
+        except (ValueError, ZeroDivisionError):
+            return None
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return Fraction(value)  # exact dyadic conversion
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -121,141 +176,232 @@ def verify(input: VerifierInput) -> VerifierReport:
     contract = input.contract
     transition = input.transition
     domain = input.domain
-
-    # Precision-policy sanity: only float64 is admitted for PROVEN
-    # verdicts. Other precisions produce at most BOUNDED_CONTRACTIVE.
-    is_float64 = contract.precision_policy.element_type == "float64"
+    arithmetic = input.arithmetic
+    scope = input.scope
 
     if transition.kind == "linear_scaled_convex_mix":
-        decay = float(transition.parameters.get("decay", 0.5))
-        margin = float(contract.requested_margin)
+        return _verify_linear(input)
 
-        # Precondition on the transition parameters themselves.
-        if not (0.0 <= decay <= 1.0):
-            return VerifierReport(
-                result=ContractionResult.VIOLATED,
-                computed_upper_bound=None,
-                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-                reason=f"decay={decay} outside [0, 1]",
-                checked_bounds={"decay": decay},
-            )
-        if not (0.0 < margin <= 1.0):
-            return VerifierReport(
-                result=ContractionResult.VIOLATED,
-                computed_upper_bound=None,
-                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-                reason=f"margin={margin} outside (0, 1]",
-                checked_bounds={"margin": margin},
-            )
-        if margin >= 1.0:
-            return VerifierReport(
-                result=ContractionResult.VIOLATED,
-                computed_upper_bound=margin,
-                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-                reason=f"margin={margin} does not satisfy < 1",
-                checked_bounds={"margin": margin},
-            )
-
-        # The map t(s, a) = margin * (decay*s + (1-decay)*a) is affine
-        # in (s, a). Its Jacobian w.r.t. s has L∞ operator norm
-        # `margin * decay`. For an isolated recursion (a fixed), that
-        # is the closed-form Lipschitz bound on the state map.
-        state_lip = margin * decay
-
-        # For the full integration transition where `a` is derived from
-        # bounded projections, the effective Lipschitz on inputs is
-        # `margin * (1-decay)` and the state-plus-input bound is at
-        # most `margin`. If the projection scale is declared and <= 1
-        # and inputs and state are bounded, the joint transition stays
-        # inside a compact ball of radius margin * max(state_radius, input_radius).
-        proj_scale = domain.projection_scale_upper
-        state_r = domain.state_radius
-        input_r = domain.input_radius
-
-        # Determine what we can prove.
-        # (i) Isolated Recursion (a treated as adversarial but bounded):
-        #     state Lipschitz is `state_lip = margin * decay < margin`.
-        #     This is the strongest closed-form claim we can make.
-
-        # PROVEN requires: float64 precision AND
-        # margin * decay < margin < 1 AND
-        # bounded projection AND bounded inputs.
-        can_prove = (
-            is_float64
-            and state_lip < margin < 1.0
-            and proj_scale is not None and 0.0 <= proj_scale <= 1.0
-            and input_r is not None and math.isfinite(input_r)
-            and state_r is not None and math.isfinite(state_r)
-        )
-        if can_prove:
-            return VerifierReport(
-                result=ContractionResult.PROVEN_CONTRACTIVE,
-                computed_upper_bound=state_lip,
-                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-                reason=(
-                    "closed-form Jacobian bound: "
-                    f"||∂t/∂s||_∞ = margin*decay = {state_lip:.6g} < "
-                    f"margin = {margin:.6g} < 1, under bounded domain"
-                ),
-                checked_bounds={
-                    "margin": margin, "decay": decay,
-                    "state_lipschitz": state_lip,
-                    "input_radius": input_r, "state_radius": state_r,
-                    "projection_scale_upper": proj_scale,
-                    "precision_policy": contract.precision_policy.element_type,
-                },
-            )
-
-        # If the closed-form bound is fine but a domain assumption
-        # is missing, we still have a SOUND numerical bound of the
-        # state Lipschitz — return BOUNDED_CONTRACTIVE.
-        if state_lip < margin < 1.0:
-            missing = []
-            if proj_scale is None:
-                missing.append("projection_scale_upper")
-            if input_r is None or not (input_r is not None and math.isfinite(input_r)):
-                missing.append("input_radius")
-            if state_r is None or not (state_r is not None and math.isfinite(state_r)):
-                missing.append("state_radius")
-            if not is_float64:
-                missing.append("precision_policy=float64")
-            return VerifierReport(
-                result=ContractionResult.BOUNDED_CONTRACTIVE,
-                computed_upper_bound=state_lip,
-                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-                reason=(
-                    "state-map Lipschitz bounded but PROVEN downgraded "
-                    f"because these are unspecified: {missing}"
-                ),
-                checked_bounds={
-                    "margin": margin, "decay": decay,
-                    "state_lipschitz": state_lip,
-                    "missing": missing,
-                    "precision_policy": contract.precision_policy.element_type,
-                },
-            )
-
-        # margin exactly at 1 or state_lip >= margin: not contractive
-        # under this rule.
-        return VerifierReport(
-            result=ContractionResult.NOT_PROVEN,
-            computed_upper_bound=state_lip,
-            method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
-            reason=(
-                f"state_lip = {state_lip:.6g} not strictly below "
-                f"margin = {margin:.6g}"
-            ),
-            checked_bounds={"margin": margin, "decay": decay, "state_lipschitz": state_lip},
-        )
-
-    # Unknown transition kind.
     return VerifierReport(
         result=ContractionResult.NOT_PROVEN,
         computed_upper_bound=None,
         method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
         reason=f"verifier has no closed-form for transition kind {transition.kind!r}",
         checked_bounds={"transition_kind": transition.kind},
+        arithmetic=arithmetic,
+        certified_scope=scope,
     )
+
+
+def _verify_linear(input: VerifierInput) -> VerifierReport:
+    contract = input.contract
+    decay_raw = input.transition.parameters.get("decay", 0.5)
+    margin_raw = contract.requested_margin
+
+    # --- precondition: parameter validity ---
+    try:
+        decay_f = float(decay_raw)
+        margin_f = float(margin_raw)
+    except (TypeError, ValueError):
+        return VerifierReport(
+            result=ContractionResult.NOT_PROVEN,
+            computed_upper_bound=None,
+            method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            reason="parameters not numeric",
+            checked_bounds={"decay_raw": str(decay_raw),
+                            "margin_raw": str(margin_raw)},
+            arithmetic=input.arithmetic,
+            certified_scope=input.scope,
+        )
+    if not (0.0 <= decay_f <= 1.0):
+        return VerifierReport(
+            result=ContractionResult.VIOLATED,
+            computed_upper_bound=None,
+            method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            reason=f"decay={decay_f} outside [0, 1]",
+            checked_bounds={"decay": decay_f},
+            arithmetic=input.arithmetic,
+            certified_scope=input.scope,
+        )
+    # For a strict `< 1` contract, margin >= 1 cannot succeed even
+    # if the transition's own coefficient is < margin.
+    if margin_f >= 1.0 or margin_f <= 0.0:
+        return VerifierReport(
+            result=ContractionResult.VIOLATED,
+            computed_upper_bound=margin_f,
+            method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            reason=f"margin={margin_f} does not satisfy 0 < margin < 1",
+            checked_bounds={"margin": margin_f},
+            arithmetic=input.arithmetic,
+            certified_scope=input.scope,
+        )
+
+    proj_scale = input.domain.projection_scale_upper
+    state_r = input.domain.state_radius
+    input_r = input.domain.input_radius
+
+    # --- attempt exact-rational proof ---
+    if input.arithmetic is ArithmeticKind.EXACT_RATIONAL:
+        margin_q = _to_exact_fraction(margin_raw)
+        decay_q = _to_exact_fraction(decay_raw)
+        if margin_q is None or decay_q is None:
+            # Parameter that cannot be represented exactly (e.g. a
+            # non-numeric value): degrade to NOT_PROVEN, not to a
+            # silently unsound PROVEN.
+            return VerifierReport(
+                result=ContractionResult.NOT_PROVEN,
+                computed_upper_bound=None,
+                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+                reason="parameters not convertible to exact Fraction",
+                checked_bounds={"margin_raw": str(margin_raw),
+                                "decay_raw": str(decay_raw)},
+                arithmetic=input.arithmetic,
+                certified_scope=input.scope,
+            )
+        state_lip_q = margin_q * decay_q  # exact
+        # Sound comparison: `<` on Fraction is exact.
+        # For the RECURSION_CORE scope we also need margin_q < 1 to
+        # satisfy the constitutional strict-contraction requirement.
+        if not (state_lip_q < margin_q < Fraction(1)):
+            return VerifierReport(
+                result=ContractionResult.NOT_PROVEN,
+                computed_upper_bound=float(state_lip_q),
+                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+                reason=(
+                    f"exact state_lip={state_lip_q} not strictly "
+                    f"below margin={margin_q}"
+                ),
+                checked_bounds={"margin": str(margin_q),
+                                "decay": str(decay_q),
+                                "state_lipschitz": str(state_lip_q)},
+                arithmetic=input.arithmetic,
+                certified_scope=input.scope,
+            )
+
+        # --- runtime precision policy ---
+        # A mathematical proof on Fractions is sound about the
+        # ABSTRACT map. The substrate's *declared* runtime arithmetic
+        # can nonetheless deviate: bf16 / f16 introduce rounding
+        # error that could push the effective transition past the
+        # margin. Only float64 is admitted as "PROVEN-compatible".
+        # Other precisions produce at most BOUNDED_CONTRACTIVE.
+        precision_ok = contract.precision_policy.element_type == "float64"
+
+        # --- domain hypotheses required for the DECLARED scope ---
+        missing = _missing_domain_hypotheses(input.scope, proj_scale, state_r, input_r)
+        if not precision_ok:
+            return VerifierReport(
+                result=ContractionResult.BOUNDED_CONTRACTIVE,
+                computed_upper_bound=float(state_lip_q),
+                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+                reason=(
+                    f"exact-rational bound proven mathematically, but the "
+                    f"declared runtime precision "
+                    f"{contract.precision_policy.element_type!r} is not "
+                    "float64: BOUNDED, not PROVEN"
+                ),
+                checked_bounds={
+                    "margin": str(margin_q), "decay": str(decay_q),
+                    "state_lipschitz": str(state_lip_q),
+                    "precision_policy": contract.precision_policy.element_type,
+                },
+                arithmetic=input.arithmetic,
+                certified_scope=input.scope,
+            )
+        if missing:
+            return VerifierReport(
+                result=ContractionResult.BOUNDED_CONTRACTIVE,
+                computed_upper_bound=float(state_lip_q),
+                method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+                reason=(
+                    f"exact bound proven but scope {input.scope.value!r} "
+                    f"lacks domain hypotheses: {missing}"
+                ),
+                checked_bounds={
+                    "margin": str(margin_q), "decay": str(decay_q),
+                    "state_lipschitz": str(state_lip_q),
+                    "missing": missing,
+                },
+                arithmetic=input.arithmetic,
+                certified_scope=input.scope,
+            )
+
+        return VerifierReport(
+            result=ContractionResult.PROVEN_CONTRACTIVE,
+            computed_upper_bound=float(state_lip_q),
+            method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            reason=(
+                f"exact-rational Jacobian bound: "
+                f"||∂t/∂s||_∞ = margin*decay = {state_lip_q} < "
+                f"margin = {margin_q} < 1; scope={input.scope.value}"
+            ),
+            checked_bounds={
+                "margin": str(margin_q), "decay": str(decay_q),
+                "state_lipschitz": str(state_lip_q),
+                "input_radius": input_r, "state_radius": state_r,
+                "projection_scale_upper": proj_scale,
+                "precision_policy": contract.precision_policy.element_type,
+                "arithmetic": ArithmeticKind.EXACT_RATIONAL.value,
+            },
+            arithmetic=input.arithmetic,
+            certified_scope=input.scope,
+        )
+
+    # --- FLOAT64 evaluation path: BOUNDED_CONTRACTIVE at best ---
+    state_lip_f = margin_f * decay_f
+    if not (state_lip_f < margin_f < 1.0):
+        return VerifierReport(
+            result=ContractionResult.NOT_PROVEN,
+            computed_upper_bound=state_lip_f,
+            method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            reason=(
+                f"float64 state_lip={state_lip_f:.17g} not strictly "
+                f"below margin={margin_f:.17g}"
+            ),
+            checked_bounds={"margin": margin_f, "decay": decay_f,
+                            "state_lipschitz": state_lip_f},
+            arithmetic=input.arithmetic,
+            certified_scope=input.scope,
+        )
+    return VerifierReport(
+        result=ContractionResult.BOUNDED_CONTRACTIVE,
+        computed_upper_bound=state_lip_f,
+        method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+        reason=(
+            "float64 evaluation supports contraction but is insufficient "
+            "for PROVEN_CONTRACTIVE per mandate §3.1"
+        ),
+        checked_bounds={
+            "margin": margin_f, "decay": decay_f,
+            "state_lipschitz": state_lip_f,
+            "arithmetic": ArithmeticKind.FLOAT64.value,
+            "precision_policy": contract.precision_policy.element_type,
+        },
+        arithmetic=input.arithmetic,
+        certified_scope=input.scope,
+    )
+
+
+def _missing_domain_hypotheses(scope: ContractionScope,
+                               proj_scale: Optional[float],
+                               state_r: Optional[float],
+                               input_r: Optional[float]) -> list[str]:
+    missing: list[str] = []
+    if scope in (ContractionScope.PROJECTED_RECURSION,
+                 ContractionScope.INTEGRATION_TRANSITION,
+                 ContractionScope.CLOSED_LOOP_TRANSITION):
+        if proj_scale is None or not (0.0 <= proj_scale <= 1.0):
+            missing.append("projection_scale_upper")
+    if scope in (ContractionScope.INTEGRATION_TRANSITION,
+                 ContractionScope.CLOSED_LOOP_TRANSITION):
+        if input_r is None or not (isinstance(input_r, (int, float)) and math.isfinite(input_r)):
+            missing.append("input_radius")
+        if state_r is None or not (isinstance(state_r, (int, float)) and math.isfinite(state_r)):
+            missing.append("state_radius")
+    if scope is ContractionScope.CLOSED_LOOP_TRANSITION:
+        # Feedback path is NOT covered by v0.1's proof surface.
+        missing.append("closed_loop_feedback_bound (not implemented in v0.1)")
+    return missing
 
 
 # ---------------------------------------------------------------------------
@@ -268,10 +414,16 @@ def recompute_reference_bound(margin: float, decay: float,
     """Independent recomputation of the L∞ operator bound.
 
     Used by tests to prove the verifier is not simply echoing the
-    substrate's own claim. Two independent expressions of the same
-    mathematical statement yielding the same number is the evidence.
+    substrate's own claim.
     """
     if not (0.0 <= decay <= 1.0) or not (0.0 < margin <= 1.0):
         raise ValueError("margin/decay outside bounds")
-    # Direct-form computation.
-    return margin * decay
+    # Compute exactly via Fraction, then round to float for display.
+    m = Fraction(margin)
+    d = Fraction(decay)
+    return float(m * d)
+
+
+def recompute_reference_bound_exact(margin, decay) -> Fraction:
+    """Exact-rational recomputation used by tamper tests."""
+    return _to_exact_fraction(margin) * _to_exact_fraction(decay)

@@ -46,7 +46,14 @@ from aeon.recursion import (
 )
 from aeon.serialization import canonical_bytes
 from aeon.signal import SignalFrame, new_signal_frame
-from aeon.verifier import DomainBounds, TransitionDefinition, VerifierInput, verify
+from aeon.contraction import ContractionScope
+from aeon.verifier import (
+    ArithmeticKind,
+    DomainBounds,
+    TransitionDefinition,
+    VerifierInput,
+    verify,
+)
 
 from runtime.interpreter import ExecutionOutcome, Interpreter
 
@@ -189,6 +196,8 @@ class NumpyContractiveRecursion:
                 state_radius=self.declared_state_radius,
                 projection_scale_upper=self.declared_projection_scale_upper,
             ),
+            arithmetic=ArithmeticKind.EXACT_RATIONAL,
+            scope=ContractionScope.RECURSION_CORE,
         ))
 
         if numerically_invalid:
@@ -219,14 +228,20 @@ class NumpyContractiveRecursion:
             measured_upper_bound=measured,
             numerical_tolerance=self.contract.numerical_tolerance,
             arithmetic_precision=self.contract.precision_policy,
-            certification_method=CertificationMethod.SYMBOLIC_PARAMETERIZATION,
+            certification_method=(
+                CertificationMethod.EXACT_RATIONAL_ARITHMETIC
+                if result is ContractionResult.PROVEN_CONTRACTIVE
+                else CertificationMethod.SYMBOLIC_PARAMETERIZATION
+            ),
             result=result,
             consumed_inputs=consumed,
             clock_position=clock_position,
+            certified_scope=report.certified_scope,
+            arithmetic_kind=report.arithmetic.value,
             method_params={
                 "parameterization": "linear_scaled_convex_mix",
                 "decay": decay,
-                "verifier": "aeon.verifier/0.1.0-dev",
+                "verifier": "aeon.verifier/0.1.0",
                 "verifier_reason": reason,
                 "computation": "numpy.float64",
             },

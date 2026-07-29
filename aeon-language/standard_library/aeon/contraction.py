@@ -68,6 +68,21 @@ class CertificationMethod(Enum):
     SPECTRAL_POWER_ITERATION = "SpectralPowerIteration"
     SINGULAR_VALUE_DECOMPOSITION = "SingularValueDecomposition"
     SYMBOLIC_PARAMETERIZATION = "SymbolicParameterization"
+    EXACT_RATIONAL_ARITHMETIC = "ExactRationalArithmetic"
+
+
+class ContractionScope(Enum):
+    """The exact map for which a certificate claims a bound.
+
+    Certifying a smaller scope does NOT imply anything about a
+    larger scope. A RECURSION_CORE certificate does not cover
+    projections, feedback, or the closed loop.
+    """
+
+    RECURSION_CORE = "RECURSION_CORE"
+    PROJECTED_RECURSION = "PROJECTED_RECURSION"
+    INTEGRATION_TRANSITION = "INTEGRATION_TRANSITION"
+    CLOSED_LOOP_TRANSITION = "CLOSED_LOOP_TRANSITION"
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +124,8 @@ class ContractionCertificate:
     consumed_inputs: Tuple[str, ...]  # sorted input digests
     clock_position: ClockPosition
     method_params: Mapping[str, Any] = field(default_factory=dict)
+    certified_scope: ContractionScope = ContractionScope.RECURSION_CORE
+    arithmetic_kind: str = "Float64"
 
     def to_canonical(self) -> dict:
         return canonical_value({
@@ -129,6 +146,8 @@ class ContractionCertificate:
                 "tick": self.clock_position.tick,
             },
             "method_params": dict(self.method_params),
+            "certified_scope": self.certified_scope.value,
+            "arithmetic_kind": self.arithmetic_kind,
         })
 
 

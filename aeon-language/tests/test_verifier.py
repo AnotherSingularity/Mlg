@@ -82,14 +82,26 @@ def test_bounded_domain_and_float64_yields_proven():
     assert r.result is ContractionResult.PROVEN_CONTRACTIVE
 
 
-def test_missing_domain_bounds_downgrades_to_bounded_contractive():
+def test_missing_domain_bounds_ok_for_recursion_core_scope():
+    # C12: RECURSION_CORE requires no domain bounds — the Jacobian
+    # bound is uniform. PROVEN honestly.
     r = verify(VerifierInput(_transition(0.5, 0.9), _contract(0.9), DomainBounds()))
+    assert r.result is ContractionResult.PROVEN_CONTRACTIVE
+
+
+def test_missing_domain_bounds_downgrades_projected_scope():
+    from aeon.contraction import ContractionScope
+    r = verify(VerifierInput(_transition(0.5, 0.9), _contract(0.9),
+                             DomainBounds(),
+                             scope=ContractionScope.PROJECTED_RECURSION))
     assert r.result is ContractionResult.BOUNDED_CONTRACTIVE
 
 
 def test_non_float64_precision_downgrades_from_proven():
     r = verify(VerifierInput(_transition(0.5, 0.9),
                              _contract(0.9, "bf16"), _bounded_domain()))
+    # bf16 runtime deviates from the abstract math; the mathematical
+    # proof holds but the substrate label must be BOUNDED, not PROVEN.
     assert r.result is ContractionResult.BOUNDED_CONTRACTIVE
 
 
@@ -156,14 +168,19 @@ def _pc(source="src.a", scale=1.0):
     )
 
 
-def test_substrate_without_bounds_emits_bounded_not_proven():
-    """Substrate without declared domain bounds MUST NOT emit PROVEN."""
+def test_substrate_without_bounds_recursion_core_still_proven():
+    """C12: RECURSION_CORE scope with exact-rational proof honestly emits PROVEN.
+
+    Domain bounds are required for larger scopes (PROJECTED_RECURSION
+    and above); the reference substrate certifies only the isolated
+    Recursion map, which does not need them.
+    """
     sub = ReferenceContractiveRecursion(4, _contract(0.9))
     s = sub.initialize({}, 0)
     m = sub.project(_frame([1, 2, 3, 4]), _pc())
     integ = ClockPosition("integration", 1)
     result = sub.integrate([m], s, integ)
-    assert result.contraction_certificate.result is ContractionResult.BOUNDED_CONTRACTIVE
+    assert result.contraction_certificate.result is ContractionResult.PROVEN_CONTRACTIVE
 
 
 def test_substrate_with_bounds_emits_proven():

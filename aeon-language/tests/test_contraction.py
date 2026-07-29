@@ -54,8 +54,11 @@ def test_contract_margin_bounds():
 
 
 def test_integrate_produces_all_certificate_fields():
-    # Substrate constructed WITHOUT declared bounds — the verifier
-    # correctly downgrades to BOUNDED_CONTRACTIVE (Phase 0.1 §3).
+    # C12 change: the reference substrate certifies the RECURSION_CORE
+    # scope with exact-rational arithmetic. For the isolated Recursion
+    # map, no domain bounds are required — the Jacobian bound is
+    # uniform. So an unbounded substrate now emits PROVEN_CONTRACTIVE
+    # honestly.
     sub = ReferenceContractiveRecursion(4, _contract(0.9))
     state = sub.initialize({}, 0)
     frame, pc = _one_input()
@@ -65,13 +68,11 @@ def test_integrate_produces_all_certificate_fields():
     c = result.contraction_certificate
     assert c.metric is Metric.LINF
     assert c.requested_margin == 0.9
-    # measured_upper_bound is now the verifier's independently
-    # computed state Lipschitz (margin * decay = 0.9 * 0.5 = 0.45).
+    # measured_upper_bound: exact-rational path yields 9/20 = 0.45.
     assert c.measured_upper_bound == 0.9 * 0.5
     assert c.arithmetic_precision.element_type == "float64"
-    assert c.certification_method is CertificationMethod.SYMBOLIC_PARAMETERIZATION
-    # No domain bounds declared -> BOUNDED_CONTRACTIVE, not PROVEN.
-    assert c.result is ContractionResult.BOUNDED_CONTRACTIVE
+    assert c.certification_method is CertificationMethod.EXACT_RATIONAL_ARITHMETIC
+    assert c.result is ContractionResult.PROVEN_CONTRACTIVE
     assert c.consumed_inputs, "consumed_inputs must be recorded"
     assert c.clock_position.domain_id == "integration"
 
