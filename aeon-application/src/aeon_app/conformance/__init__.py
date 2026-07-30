@@ -53,8 +53,8 @@ REQUIRED_PROFILES: Tuple[str, ...] = (
 # report by human review of this table.
 GATE_MAP: Mapping[str, str] = {
     "language_conformance":       "Gate L-A",
-    "source_conformance":         "Gate L-B",
-    "boundedness":                "Gate L-C",
+    "boundedness":                "Gate L-B",
+    "source_conformance":         "Gate L-C",
     "contraction_status":         "Gate L-D",
     "runtime_determinism":        "Gate L-E",
     "snapshot_fidelity":          "Gate L-F",

@@ -8,7 +8,7 @@
   "application_snapshot_schema_version": "0.1.0",
   "application_version": "0.1.0",
   "artifact": "aeon-application-v0.1.0",
-  "conformance_manifest_digest": "50193f10709ca09d95de8b2cb14f4172d5a4d99e7598cd00a5aba92d7d27463b",
+  "conformance_manifest_digest": "004092a9efe19815377b59be9e68b2da2aa9bfbc2ae985cd0d5927dfe4c2f23b",
   "conformance_required_profiles": [
     "CONFIG",
     "SOURCE",

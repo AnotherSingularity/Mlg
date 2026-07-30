@@ -11,7 +11,7 @@
   "application_version": "0.1.0",
   "decision": "PASS",
   "language_certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
-  "manifest_digest": "50193f10709ca09d95de8b2cb14f4172d5a4d99e7598cd00a5aba92d7d27463b",
+  "manifest_digest": "004092a9efe19815377b59be9e68b2da2aa9bfbc2ae985cd0d5927dfe4c2f23b",
   "profiles": [
     {
       "category": "language_conformance",
@@ -26,7 +26,7 @@
     {
       "category": "source_conformance",
       "fail_count": 0,
-      "gate": "Gate L-B",
+      "gate": "Gate L-C",
       "name": "SOURCE",
       "pass_count": 10,
       "passed": true,
@@ -36,7 +36,7 @@
     {
       "category": "boundedness",
       "fail_count": 0,
-      "gate": "Gate L-C",
+      "gate": "Gate L-B",
       "name": "PROJECTION",
       "pass_count": 5,
       "passed": true,

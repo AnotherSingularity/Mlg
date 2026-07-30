@@ -76,7 +76,7 @@
         "tests/test_sources_projections_recursion.py::test_projection_input_dim_mismatch_raises",
         "tests/test_sources_projections_recursion.py::test_projection_descriptor_is_stable_json"
       ],
-      "gate": "Gate L-C",
+      "gate": "Gate L-B",
       "name": "PROJECTION",
       "required": true
     },
@@ -118,7 +118,7 @@
         "tests/test_sources_projections_recursion.py::test_recurrent_matrix_read_and_dimension_read",
         "tests/test_sources_projections_recursion.py::test_recurrent_source_capability_negotiation_passes_required"
       ],
-      "gate": "Gate L-B",
+      "gate": "Gate L-C",
       "name": "SOURCE",
       "required": true
     },
