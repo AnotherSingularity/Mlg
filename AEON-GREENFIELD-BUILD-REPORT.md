@@ -1,7 +1,7 @@
 # Aeon Greenfield Application — Build & Launch Report
 
 **Artifact:** `aeon-application-v0.1.0`
-**Application HEAD:** `4ff963fa3a85db9798648fbc63c3db02304c6990`
+**Application HEAD:** `a5aa0d61…` (this report); `4ff963fa3a85db9798648fbc63c3db02304c6990` (packaging + release artifacts)
 **Branch:** `claude/aeon-language-phase-0-24enl0`
 **Aeon Language pin:** `0.1.0` @ `b5e27a9bbc836897d9ac20d92c7d2fb786335f8f`
 **Report date:** 2026-07-30
@@ -18,8 +18,8 @@ permitted.
 ## 1. Terminal CI evidence
 
 **Workflow:** `.github/workflows/aeon-application.yml`
-**Run id:** `30540941040`
-**Head SHA:** `4ff963fa3a85db9798648fbc63c3db02304c6990`
+**Run id:** `30541417494` (report head); `30540941040` (packaging fix head, artifact-generating)
+**Head SHA:** `a5aa0d61da` (report head, run 30541417494); `4ff963fa3a85db9798648fbc63c3db02304c6990` (packaging fix head, run 30540941040)
 **Conclusion:** `success` (8 / 8 jobs green)
 
 | Job                                                                        | Conclusion |
@@ -303,7 +303,8 @@ rewritten. Ordered by commit chronology:
 | eb86f17  | L12     | CLI + clean-install CI smoke                                         |
 | ee52f62  | L13     | Conformance suite + runner + CI matrix                               |
 | ae67766  | L12 fix | CI YAML: quote step names containing colons                          |
-| 4ff963f  | L14     | Package language lock; add release manifest + conformance evidence   |
+| 4ff963f  | L12 fix + L14 artifacts | Package language lock; add release manifest + conformance evidence |
+| a5aa0d6  | L14     | Gate L-A..L-J evaluation + LAUNCH CERTIFIED report                   |
 
 ---
 
