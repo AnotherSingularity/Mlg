@@ -61,11 +61,16 @@ def test_run_is_deterministic():
     assert [o.payload for o in a] == [o.payload for o in b]
 
 
-def test_certified_mode_startup_is_rejected():
-    cfg = replace(reference_config(), runtime_mode="CERTIFIED")
-    with pytest.raises(RuntimeRejected) as exc:
-        new_session(cfg)
-    assert exc.value.code == "CERTIFIED_NOT_YET_AUTHORIZED"
+def test_certified_mode_startup_succeeds_on_frozen_config():
+    """L15 activated CERTIFIED as the default runtime. The frozen
+    certified config must construct a session cleanly; the session
+    exposes a valid CertifiedStartupResult."""
+    from aeon_app.certified import certified_config
+    session = new_session(certified_config())
+    assert session.certified_startup is not None
+    assert session.certified_startup.valid is True
+    assert session.certified_startup.checks["graph_digest_matches"] is True
+    assert session.certified_startup.checks["ir_digest_matches"] is True
 
 
 def test_unknown_source_implementation_rejected_at_new_session():

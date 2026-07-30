@@ -138,6 +138,8 @@ class ApplicationSession:
     _seq: int = 0
     # Pending feedback signals to add to the next step's input (per-source).
     _feedback_biases: Dict[str, Tuple[float, ...]] = field(default_factory=dict)
+    # Populated when the session was created in CERTIFIED mode; None otherwise.
+    certified_startup: Optional[Any] = None
 
     def _fresh_frame_for(self, source_id: str, tick: int) -> SignalFrame:
         # Deterministic input sequence for REFERENCE mode: the input
@@ -328,12 +330,17 @@ class ApplicationSession:
                                     "tick": cert.clock_position.tick},
             },
             provenance={
+                "application_version": APPLICATION_VERSION,
                 "application_graph_id": self.graph_id,
                 "ir_module_id": self.ir_module_id,
                 "language_version": AEON_LANGUAGE_REQUIRED_VERSION,
                 "language_certified_commit": AEON_LANGUAGE_CERTIFIED_COMMIT,
                 "config_digest": self.config.digest(),
                 "runtime_mode": self.config.runtime_mode,
+                "certified_startup_digest": (
+                    self.certified_startup.digest()
+                    if self.certified_startup is not None else None
+                ),
             },
         )
         self.outputs.append(output)
@@ -451,14 +458,15 @@ def _validity_from_certificate(cert: ContractionCertificate) -> Validity:
 def new_session(config: ApplicationConfig) -> ApplicationSession:
     verify_language_lock()
     cfg = resolve(config)
+
+    # L15: CERTIFIED startup verification. This runs BEFORE any
+    # source or Recursion state is initialized (mandate §L15.2.4).
+    # Failure raises CertifiedStartupError and MUST NOT be caught
+    # by callers to downgrade to another mode (mandate §L15.2.3).
+    startup_result = None
     if cfg.runtime_mode == "CERTIFIED":
-        # CERTIFIED default may not be enabled before Gate L-J; the
-        # runtime rejects it at startup.
-        raise RuntimeRejected(
-            "CERTIFIED_NOT_YET_AUTHORIZED",
-            "CERTIFIED runtime mode requires Gate L-J authorization "
-            "(reports/AEON-GREENFIELD-BUILD-REPORT.md)",
-        )
+        from ..certified import verify_certified_startup
+        startup_result = verify_certified_startup(cfg)
 
     graph = build_from_config(cfg)
     ir = compile_to_ir(cfg, graph)
@@ -514,12 +522,21 @@ def new_session(config: ApplicationConfig) -> ApplicationSession:
         projections=projections,
         event_log=EventLog(tracing_enabled=cfg.observability.tracing_enabled),
     )
+    session.certified_startup = startup_result
     session.event_log.record(
         kind="ApplicationInitialized",
         body={"graph_id": graph.graph_id, "ir_module_id": ir.module_id,
               "runtime_mode": cfg.runtime_mode,
               "config_digest": cfg.digest()},
     )
+    if startup_result is not None:
+        session.event_log.record(
+            kind="CertifiedStartupVerified",
+            body={"startup_digest": startup_result.digest(),
+                  "graph_digest": startup_result.graph_digest,
+                  "ir_digest": startup_result.ir_digest,
+                  "language_commit": startup_result.language_commit},
+        )
     return session
 
 

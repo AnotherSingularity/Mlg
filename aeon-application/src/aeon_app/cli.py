@@ -28,6 +28,11 @@ from pathlib import Path
 from typing import Callable, Optional, Sequence
 
 from . import APPLICATION_VERSION
+from .certified import (
+    DEFAULT_RUNTIME_MODE,
+    SUPPORTED_RUNTIME_MODES,
+    parse_runtime_mode,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -40,19 +45,26 @@ def _emit(obj) -> None:
     sys.stdout.write("\n")
 
 
-def _reference_config(mode: Optional[str] = None):
+def _default_config(mode: Optional[str] = None):
+    """The single application-wide default config factory.
+
+    ``mode`` selects the runtime mode explicitly. When ``mode`` is
+    ``None`` the DEFAULT_RUNTIME_MODE (CERTIFIED as of L15) is
+    used. Every entry point routes through here so there is
+    exactly one authoritative default.
+    """
     from .config import reference_config
+    resolved_mode = parse_runtime_mode(mode)
     cfg = reference_config()
-    if mode:
-        cfg = replace(cfg, runtime_mode=mode)
-    return cfg
+    return replace(cfg, runtime_mode=resolved_mode)
 
 
 def _add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--mode",
-                   choices=("REFERENCE", "DEVELOPMENT", "CERTIFIED"),
+                   choices=SUPPORTED_RUNTIME_MODES,
                    default=None,
-                   help="override runtime mode (default: config value)")
+                   help=(f"runtime mode; default is {DEFAULT_RUNTIME_MODE} "
+                         "when omitted"))
 
 
 # ---------------------------------------------------------------------------
@@ -61,9 +73,14 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
+    from .certified import (
+        CertifiedStartupError,
+        certified_config,
+        verify_certified_startup,
+    )
     from .config import resolve, ConfigError
     from .config.language_lock import verify_language_lock
-    cfg = _reference_config(args.mode)
+    cfg = _default_config(args.mode)
     try:
         cfg = resolve(cfg)
     except ConfigError as e:
@@ -76,11 +93,31 @@ def _cmd_check(args: argparse.Namespace) -> int:
         _emit({"ok": False, "stage": "language_lock",
                "message": str(e)})
         return 3
+    # Certified-execution readiness probe: run the L15 startup gate
+    # against the certified config (independent of the mode selected
+    # for this command) so `aeon-app-check` reports installation
+    # readiness for certified execution.
+    certified_ready = False
+    certified_report = None
+    try:
+        result = verify_certified_startup(certified_config())
+        certified_ready = result.valid
+        certified_report = {
+            "graph_digest": result.graph_digest,
+            "ir_digest": result.ir_digest,
+            "configuration_digest": result.configuration_digest,
+            "language_commit": result.language_commit,
+            "checks": dict(result.checks),
+        }
+    except CertifiedStartupError as e:
+        certified_report = {"failure_code": e.code, "message": str(e)}
     _emit({"ok": True,
            "application_version": APPLICATION_VERSION,
            "runtime_mode": cfg.runtime_mode,
            "config_digest": cfg.digest(),
-           "semantic_digest": cfg.semantic_digest()})
+           "semantic_digest": cfg.semantic_digest(),
+           "certified_execution_ready": certified_ready,
+           "certified_startup_report": certified_report})
     return 0
 
 
@@ -99,7 +136,7 @@ def app_check(argv: Optional[Sequence[str]] = None) -> int:
 def _cmd_compile(args: argparse.Namespace) -> int:
     from .config import resolve
     from .graph import build_from_config, compile_to_ir
-    cfg = resolve(_reference_config(args.mode))
+    cfg = resolve(_default_config(args.mode))
     graph = build_from_config(cfg)
     ir = compile_to_ir(cfg, graph)
     payload = {
@@ -130,7 +167,7 @@ def app_compile(argv: Optional[Sequence[str]] = None) -> int:
 def _cmd_run(args: argparse.Namespace) -> int:
     from .application import new_session, run
     from .config import resolve
-    cfg = resolve(_reference_config(args.mode))
+    cfg = resolve(_default_config(args.mode))
     session = new_session(cfg)
     outputs = run(session, ticks=args.ticks)
     payload = {
@@ -166,6 +203,11 @@ def app_run(argv: Optional[Sequence[str]] = None) -> int:
 
 
 def _cmd_train(args: argparse.Namespace) -> int:
+    # L15 §2.9: training never modifies the frozen certified
+    # configuration in place. Training runs against a DEVELOPMENT
+    # copy; outputs are labeled as candidate/development artifacts
+    # and never become certified until an explicit certification
+    # revision promotes them.
     from .training import make_reference_batch, make_training_session
     session = make_training_session(learning_rate=args.learning_rate)
     certs = []
@@ -173,8 +215,11 @@ def _cmd_train(args: argparse.Namespace) -> int:
         batch = make_reference_batch(seed=args.seed + i, ticks=args.ticks)
         certs.append(session.step(batch))
     _emit({
+        "artifact_space": "development",
+        "certified": False,
         "steps": len(certs),
         "final_optimizer_digest": session.optimizer.digest(),
+        "training_runtime_mode": session.config.runtime_mode,
         "certificates": [
             {
                 "batch_digest": c.batch_digest,
@@ -235,7 +280,7 @@ def app_evaluate(argv: Optional[Sequence[str]] = None) -> int:
 def _cmd_snapshot(args: argparse.Namespace) -> int:
     from .application import new_session, run
     from .config import resolve
-    cfg = resolve(_reference_config(args.mode))
+    cfg = resolve(_default_config(args.mode))
     session = new_session(cfg)
     run(session, ticks=args.ticks)
     snap = session.snapshot()
@@ -271,7 +316,7 @@ def _cmd_replay(args: argparse.Namespace) -> int:
     from .persistence import load_snapshot
     raw = Path(args.snapshot).read_bytes()
     snap = load_snapshot(raw)
-    cfg = resolve(_reference_config(args.mode))
+    cfg = resolve(_default_config(args.mode))
     session = restore(cfg, snap)
     outputs = run(session, ticks=args.ticks)
     _emit({
@@ -307,14 +352,27 @@ def app_replay(argv: Optional[Sequence[str]] = None) -> int:
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
+    from . import AEON_LANGUAGE_CERTIFIED_COMMIT, AEON_LANGUAGE_REQUIRED_VERSION
+    from .certified import (
+        CERTIFIED_BACKEND_ID,
+        CERTIFIED_CONFIG_DIGEST,
+        CERTIFIED_GRAPH_ID,
+        CERTIFIED_IR_MODULE_ID,
+    )
     from .config import resolve
     from .graph import build_from_config, compile_to_ir
-    cfg = resolve(_reference_config(args.mode))
+    cfg = resolve(_default_config(args.mode))
     graph = build_from_config(cfg)
     ir = compile_to_ir(cfg, graph)
     payload = {
         "application_version": APPLICATION_VERSION,
+        "release_identity": {
+            "application_version": APPLICATION_VERSION,
+            "language_version": AEON_LANGUAGE_REQUIRED_VERSION,
+            "language_certified_commit": AEON_LANGUAGE_CERTIFIED_COMMIT,
+        },
         "runtime_mode": cfg.runtime_mode,
+        "backend": cfg.backend.id,
         "config_digest": cfg.digest(),
         "semantic_digest": cfg.semantic_digest(),
         "graph_id": graph.graph_id,
@@ -325,6 +383,18 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         "recursion": cfg.recursion.component_id,
         "feedback": [f.id for f in cfg.feedback],
         "clocks": [c.id for c in cfg.clocks],
+        "frozen_certified": {
+            "config_digest": CERTIFIED_CONFIG_DIGEST,
+            "graph_id": CERTIFIED_GRAPH_ID,
+            "ir_module_id": CERTIFIED_IR_MODULE_ID,
+            "backend": CERTIFIED_BACKEND_ID,
+            "matches_frozen": (
+                cfg.digest() == CERTIFIED_CONFIG_DIGEST
+                and graph.graph_id == CERTIFIED_GRAPH_ID
+                and ir.module_id == CERTIFIED_IR_MODULE_ID
+                and cfg.backend.id == CERTIFIED_BACKEND_ID
+            ),
+        },
     }
     if args.canonical:
         payload["config_canonical"] = cfg.to_canonical()

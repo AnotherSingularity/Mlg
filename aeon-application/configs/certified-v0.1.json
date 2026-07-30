@@ -1,0 +1,225 @@
+{
+  "application_version": "0.1.0",
+  "backend_id": "python",
+  "canonical_config": {
+    "application_version": "0.1.0",
+    "backend": {
+      "id": "python",
+      "numerical_tolerance": "0.0",
+      "schema_version": "0.1.0",
+      "version": "0.1.0"
+    },
+    "clocks": [
+      {
+        "aggregates_from": "source",
+        "id": "integration",
+        "kind": "Integration",
+        "schema_version": "0.1.0",
+        "window_size": 2
+      },
+      {
+        "aggregates_from": null,
+        "id": "source",
+        "kind": "Token",
+        "schema_version": "0.1.0",
+        "window_size": null
+      }
+    ],
+    "feedback": [
+      {
+        "clock_relation": "integration_to_source",
+        "destination": "attention",
+        "gate": "0.0",
+        "id": "feedback.attention",
+        "origin": "recursion",
+        "projection": "feedback_to_attention",
+        "required_capability": "VectorDrive",
+        "schema_version": "0.1.0",
+        "scope": "PROJECTED_RECURSION"
+      },
+      {
+        "clock_relation": "integration_to_source",
+        "destination": "recurrent",
+        "gate": "0.0",
+        "id": "feedback.recurrent",
+        "origin": "recursion",
+        "projection": "feedback_to_recurrent",
+        "required_capability": "VectorDrive",
+        "schema_version": "0.1.0",
+        "scope": "PROJECTED_RECURSION"
+      }
+    ],
+    "graph_name": "reference_two_sources",
+    "inference": {
+      "schema_version": "0.1.0",
+      "ticks": 4
+    },
+    "observability": {
+      "metric_categories": [
+        "certificate_status",
+        "integration_duration",
+        "source_step_duration",
+        "window_occupancy"
+      ],
+      "schema_version": "0.1.0",
+      "tracing_enabled": true
+    },
+    "projections": [
+      {
+        "clock_relation": "source_to_integration",
+        "component_id": "attention_to_recursion",
+        "contract": "Bounded",
+        "implementation": "aeon_app.projections.attention_to_recursion:AttentionToRecursion",
+        "input_shape": [
+          4
+        ],
+        "numerical_precision": "float64",
+        "output_shape": [
+          4
+        ],
+        "parameters": {},
+        "scale_upper_bound": "1.0",
+        "schema_version": "0.1.0",
+        "source_component": "attention",
+        "target_component": "recursion"
+      },
+      {
+        "clock_relation": "integration_to_source",
+        "component_id": "feedback_to_attention",
+        "contract": "Bounded",
+        "implementation": "aeon_app.projections.feedback:RecursionToAttentionFeedback",
+        "input_shape": [
+          4
+        ],
+        "numerical_precision": "float64",
+        "output_shape": [
+          4
+        ],
+        "parameters": {},
+        "scale_upper_bound": "0.5",
+        "schema_version": "0.1.0",
+        "source_component": "recursion",
+        "target_component": "attention"
+      },
+      {
+        "clock_relation": "integration_to_source",
+        "component_id": "feedback_to_recurrent",
+        "contract": "Bounded",
+        "implementation": "aeon_app.projections.feedback:RecursionToRecurrentFeedback",
+        "input_shape": [
+          4
+        ],
+        "numerical_precision": "float64",
+        "output_shape": [
+          4
+        ],
+        "parameters": {},
+        "scale_upper_bound": "0.5",
+        "schema_version": "0.1.0",
+        "source_component": "recursion",
+        "target_component": "recurrent"
+      },
+      {
+        "clock_relation": "source_to_integration",
+        "component_id": "recurrent_to_recursion",
+        "contract": "Bounded",
+        "implementation": "aeon_app.projections.recurrent_to_recursion:RecurrentToRecursion",
+        "input_shape": [
+          4
+        ],
+        "numerical_precision": "float64",
+        "output_shape": [
+          4
+        ],
+        "parameters": {},
+        "scale_upper_bound": "1.0",
+        "schema_version": "0.1.0",
+        "source_component": "recurrent",
+        "target_component": "recursion"
+      }
+    ],
+    "recursion": {
+      "clock": "integration",
+      "component_id": "recursion",
+      "contraction_margin": "0.9",
+      "decay": "0.5",
+      "declared_input_radius": "10.0",
+      "declared_projection_scale_upper": "1.0",
+      "declared_state_radius": "10.0",
+      "dimension": 4,
+      "implementation": "aeon_app.recursion.substrate:ApplicationContractiveRecursion",
+      "numerical_precision": "float64",
+      "schema_version": "0.1.0"
+    },
+    "runtime_mode": "CERTIFIED",
+    "schema_version": "0.1.0",
+    "snapshot": {
+      "include_event_log": true,
+      "include_random_state": true,
+      "schema_version": "0.1.0",
+      "schema_version_snapshot": "0.1.0"
+    },
+    "sources": [
+      {
+        "clock": "source",
+        "component_id": "attention",
+        "dimension": 4,
+        "implementation": "aeon_app.sources.attention:AttentionSource",
+        "numerical_precision": "float64",
+        "offered_capabilities": [
+          "AttentionMapRead",
+          "PerTokenStep",
+          "VectorDrive",
+          "VectorRead"
+        ],
+        "parameters": {},
+        "required_capabilities": [
+          "PerTokenStep",
+          "VectorDrive",
+          "VectorRead"
+        ],
+        "schema_version": "0.1.0",
+        "seed": 1
+      },
+      {
+        "clock": "source",
+        "component_id": "recurrent",
+        "dimension": 4,
+        "implementation": "aeon_app.sources.recurrent:PersistentRecurrentSource",
+        "numerical_precision": "float64",
+        "offered_capabilities": [
+          "DecayControl",
+          "MatrixRead",
+          "PerStepTransition",
+          "PerTokenStep",
+          "Restore",
+          "Snapshot",
+          "VectorDrive",
+          "VectorRead"
+        ],
+        "parameters": {},
+        "required_capabilities": [
+          "PerTokenStep",
+          "VectorDrive",
+          "VectorRead"
+        ],
+        "schema_version": "0.1.0",
+        "seed": 2
+      }
+    ],
+    "training": {
+      "enabled": false,
+      "learning_rate": "0.001",
+      "loss_terms": [],
+      "schema_version": "0.1.0",
+      "seed": 0
+    }
+  },
+  "certified_activation_version": "0.1.0",
+  "config_digest": "5cd0371f157fe9dd921c45b888ece3228aee7f9b3a247968e6c7714fdb88753d",
+  "graph_id": "dbbb6c3bb2a7ee1e6d4945b6509cefaee2a77c92918237fa8098d66c05dac565",
+  "instruction_count": 21,
+  "ir_module_id": "9cf9ce5377d7f81e6382cc6aa4d647f2ee585818417cfefdb02b608e26f5ad76",
+  "language_certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
+  "language_version": "0.1.0"
+}

@@ -88,3 +88,37 @@ jobs:
             --profile CONFIG --profile SOURCE --profile PROJECTION \
             --profile RECURSION --profile SCHEDULER --profile FEEDBACK \
             --profile PERSISTENCE --profile TRAINING
+
+  app_certified_activation:
+    name: aeon-app certified activation (startup + no-fallback + soak)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest numpy
+      - name: Run certified-mode tests (tests/test_certified.py)
+        working-directory: aeon-application
+        env:
+          PYTHONPATH: src:../aeon-language/standard_library:../aeon-language
+        run: |
+          python -m pytest tests/test_certified.py -q
+      - name: Certified startup probe via aeon-app-check
+        run: |
+          python -m pip install ./aeon-language
+          python -m pip install --no-deps ./aeon-application
+          aeon-app-check | tee /tmp/check.json
+          python -c "import json; d=json.load(open('/tmp/check.json')); assert d['certified_execution_ready'] is True, d; assert d['runtime_mode']=='CERTIFIED', d"
+      - name: Certified snapshot + replay round-trip (installed CLI)
+        run: |
+          aeon-app-snapshot --out /tmp/certified.snap --ticks 4
+          aeon-app-replay   --snapshot /tmp/certified.snap --ticks 4
+      - name: Certified inspect must match frozen identities
+        run: |
+          aeon-app-inspect | tee /tmp/inspect.json
+          python -c "import json; d=json.load(open('/tmp/inspect.json')); assert d['frozen_certified']['matches_frozen'] is True, d; assert d['runtime_mode']=='CERTIFIED', d"

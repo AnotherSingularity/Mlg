@@ -17,6 +17,7 @@ from ..identity import app_event_id
 
 EVENT_KINDS = (
     "ApplicationInitialized",
+    "CertifiedStartupVerified",
     "SourceInitialized",
     "SourceStepped",
     "FrameEmitted",
