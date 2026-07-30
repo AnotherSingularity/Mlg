@@ -1,4 +1,18 @@
 {
+  "_withdrawn": {
+    "on": "2026-07-30",
+    "by": "independent audit R0",
+    "supersedes": "AEON-v0.1.0-AUDIT-REJECTION.md",
+    "audit_source": "docs/audit/2026-07-30-AEON_RUTHLESS_AUDIT.md",
+    "reason": "manifest is stale and contradicts the running source (H-10); the underlying release is REJECTED by the audit's C-01/C-03/C-04/C-05 findings",
+    "corrected_status": "Aeon application v0.1.0 is a REFERENCE DEMONSTRATOR; certified runtime is REJECTED; public release is PROHIBITED",
+    "must_not": [
+      "sign any artifact against this manifest",
+      "publish the aeon-v0.1.0 application tag",
+      "publish the aeon-language-v0.1.0 tag as CERTIFIED",
+      "trust the fields below as evidence of runtime state"
+    ]
+  },
   "aeon_language_certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
   "aeon_language_required_version": "0.1.0",
   "application_config_schema_version": "0.1.0",

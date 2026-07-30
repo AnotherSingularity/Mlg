@@ -1,3 +1,12 @@
+> **WITHDRAWN 2026-07-30 by independent audit R0.** The
+> `WINDOWS PACKAGE VALIDATED` verdict below is superseded by
+> [`../../AEON-v0.1.0-AUDIT-REJECTION.md`](../../AEON-v0.1.0-AUDIT-REJECTION.md).
+> The evidence supports only "unsigned installer smoke-tested"
+> — not semantic release validation. H-07 (launcher accepts a
+> missing release manifest and silently falls back to
+> constants) and H-09 (signed-release workflow has execution
+> defects) are unclosed. Preserved as a historical artifact.
+
 # L16 — Windows Packaging Report
 
 **Application certified activation SHA:** `ae29a475f1dbab2250874ad904fa47e1753a31ca`

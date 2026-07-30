@@ -1,3 +1,8 @@
+> **WITHDRAWN 2026-07-30 by independent audit R0.** The
+> `LAUNCH CERTIFIED` verdict below is superseded by
+> [`AEON-v0.1.0-AUDIT-REJECTION.md`](AEON-v0.1.0-AUDIT-REJECTION.md).
+> Preserved here as a historical artifact only.
+
 # Aeon Greenfield Application — Build & Launch Report
 
 **Artifact:** `aeon-application-v0.1.0`

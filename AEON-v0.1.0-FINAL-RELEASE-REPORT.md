@@ -1,3 +1,14 @@
+> **WITHDRAWN 2026-07-30 by independent audit R0.** Every
+> certification / validation / activation conclusion below is
+> superseded by
+> [`AEON-v0.1.0-AUDIT-REJECTION.md`](AEON-v0.1.0-AUDIT-REJECTION.md).
+> The underlying audit is preserved verbatim at
+> `docs/audit/2026-07-30-AEON_RUTHLESS_AUDIT.md`. The corrected
+> status is: language = EXPERIMENTAL PROTOTYPE; application =
+> REFERENCE DEMONSTRATOR; certified runtime = REJECTED; Windows
+> package = UNSIGNED SMOKE ONLY; public release = PROHIBITED.
+> Preserved here as a historical artifact only.
+
 # Aeon v0.1.0 — Final Release Report
 
 **Artifact:** `aeon-application-v0.1.0`

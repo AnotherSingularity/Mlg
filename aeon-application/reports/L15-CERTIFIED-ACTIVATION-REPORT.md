@@ -1,3 +1,12 @@
+> **WITHDRAWN 2026-07-30 by independent audit R0.** The
+> "certified runtime is authoritative" verdict below is
+> superseded by
+> [`../../AEON-v0.1.0-AUDIT-REJECTION.md`](../../AEON-v0.1.0-AUDIT-REJECTION.md).
+> C-04 (certified startup does not bind executable bytes) and
+> C-05 (snapshots accept tampered semantic identity) were
+> reproduced against this branch. Preserved as a historical
+> artifact only.
+
 # L15 — Certified Runtime Activation Report
 
 **Starting SHA:** `293696af850603225bb461553a4178e37eee2b94`
