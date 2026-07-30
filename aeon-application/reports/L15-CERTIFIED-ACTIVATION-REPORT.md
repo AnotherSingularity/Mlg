@@ -1,7 +1,8 @@
 # L15 — Certified Runtime Activation Report
 
 **Starting SHA:** `293696af850603225bb461553a4178e37eee2b94`
-**L15 SHA:** *populated at commit time*
+**L15 SHA:** `ae29a475f1dbab2250874ad904fa47e1753a31ca`
+**L15 CI run:** `30543678726` — 9/9 jobs `success`
 **Default runtime mode:** `CERTIFIED` (was `REFERENCE`)
 **Certified activation version:** `0.1.0`
 **Application version:** `0.1.0`
@@ -121,16 +122,26 @@ New tests added in L15: `tests/test_certified.py` (21 tests).
 
 ## 9. CI evidence
 
-*Populated after CI completes on the L15 activation SHA.*
+Workflow: `.github/workflows/aeon-application.yml`
+Run: `30543678726` (head `ae29a475f1`) — **9 / 9 jobs green**.
 
-- Workflow: `.github/workflows/aeon-application.yml`
-- New job: `app_certified_activation`
-  - `tests/test_certified.py` (in-process)
-  - `aeon-app-check` reports `certified_execution_ready=true`
-  - `aeon-app-inspect` shows `frozen_certified.matches_frozen=true`
-  - `aeon-app-snapshot` + `aeon-app-replay` round-trip under CERTIFIED
-- Preserved jobs: `app_tests` (py 3.10/3.11/3.12),
-  `app_clean_install`, `app_conformance` (four hash seeds).
+| Job                                                            | Conclusion |
+| -------------------------------------------------------------- | ---------- |
+| aeon-app certified activation (startup + no-fallback + soak)   | success    |
+| aeon-app tests (py 3.10)                                       | success    |
+| aeon-app tests (py 3.11)                                       | success    |
+| aeon-app tests (py 3.12)                                       | success    |
+| aeon-app clean install + CLI smoke                             | success    |
+| aeon-app conformance suite REQUIRED (PYTHONHASHSEED=0)         | success    |
+| aeon-app conformance suite REQUIRED (PYTHONHASHSEED=1)         | success    |
+| aeon-app conformance suite REQUIRED (PYTHONHASHSEED=42)        | success    |
+| aeon-app conformance suite REQUIRED (PYTHONHASHSEED=random)    | success    |
+
+Sub-steps of `app_certified_activation`:
+- `tests/test_certified.py` — 21 tests, all green.
+- `aeon-app-check` reports `certified_execution_ready=true`.
+- `aeon-app-snapshot` + `aeon-app-replay` round-trip under CERTIFIED — green.
+- `aeon-app-inspect` reports `frozen_certified.matches_frozen=true`.
 
 ## 10. Known limitations
 
