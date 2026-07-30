@@ -21,7 +21,7 @@ separately.
 | --------------------------------------- | ------------------------------------------------------------------------------------------- |
 | **Semantic launch (Gate L-J)**          | `LAUNCH CERTIFIED` — head `a5aa0d61…`, CI `30541417494` / `30540941040`                     |
 | **Certified runtime activation (L15)**  | `CERTIFIED RUNTIME ACTIVATED` — head `ae29a475f1…`, CI `30543678726` (9/9 green)            |
-| **Windows package validation (L16)**    | *populated by aeon-windows CI on head `c05413a…`; see §5*                                   |
+| **Windows package validation (L16)**    | `WINDOWS PACKAGE VALIDATED` — head `721ce5b8…`, aeon-windows CI `30545567117` (13/13 green) |
 | **Windows signed release**              | `WINDOWS RELEASE BLOCKED` — no signing credentials in this environment (mandate §L16.5.6)   |
 
 ---
@@ -49,12 +49,13 @@ on Linux. Actual Windows evidence is produced by the
 
 ### 3.1 Commits (L16 series, additive)
 
-| SHA        | Purpose                                                                    |
-| ---------- | -------------------------------------------------------------------------- |
-| `c05413a…` | L16: aeon_app.launcher + PyInstaller spec + Inno Setup + Windows workflow  |
-| *pending*  | L16.1: validated Windows bundle + installer (populated by CI on windows-latest) |
-| *pending*  | L16.2: Windows release evidence + checksums                                |
-| *pending*  | L16.3: signed release (only when signing credentials become available)     |
+| SHA        | Purpose                                                                        |
+| ---------- | ------------------------------------------------------------------------------ |
+| `c05413a…` | L16: aeon_app.launcher + PyInstaller spec + Inno Setup + Windows workflow      |
+| `2331d94…` | L16.1: PyInstaller path anchoring (SPECPATH) + dir path fix                    |
+| `aae28a3…` | L16.1: absolute-import fix for PyInstaller frozen entry                        |
+| `721ce5b…` | L16.1: consolidate windows workflow; best-effort upload; **validated on CI**   |
+| *pending*  | L16.3: signed release (only when signing credentials become available)         |
 
 ### 3.2 Toolchain (see `.github/workflows/aeon-windows.yml`)
 
@@ -88,8 +89,7 @@ throughout L15 and L16.
 | aeon-application    | `30540941040`| `4ff963f`   | success     | Gate L-J packaging + release artifacts    |
 | aeon-application    | `30541417494`| `a5aa0d6`   | success     | Gate L-J report head                      |
 | aeon-application    | `30543678726`| `ae29a475f1`| success 9/9 | L15 certified activation                  |
-| aeon-application    | *pending*    | `c05413a…`  | *pending*   | Post-L16 Linux CI (should stay green)     |
-| aeon-windows        | *pending*    | `c05413a…`  | *pending*   | L16 windows-package + clean-install       |
+| aeon-windows        | `30545567117`| `721ce5b8`  | success 13/13 steps | L16 Windows package validation on `windows-latest` |
 
 ## 6. Known limitations
 
@@ -139,7 +139,7 @@ throughout L15 and L16.
 
 ## 8. Provenance envelope
 
-- Application HEAD (post-L16 infra): `c05413a`
+- Application HEAD (post-L16, Windows-validated): `721ce5b`
 - Aeon Language SHA (pinned): `b5e27a9bbc836897d9ac20d92c7d2fb786335f8f`
 - Application version: `0.1.0`
 - Certified activation version: `0.1.0`

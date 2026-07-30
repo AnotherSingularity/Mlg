@@ -1,6 +1,8 @@
 # L16 — Windows Packaging Report
 
-**Application certified activation SHA:** *populated at L16 commit time*
+**Application certified activation SHA:** `ae29a475f1dbab2250874ad904fa47e1753a31ca`
+**L16 packaging SHA (validated on Windows CI):** `721ce5b8440912ec842af16e96158b8315d33d7d`
+**aeon-windows CI run:** `30545567117` — **all 13 workflow steps green** on `windows-latest`
 **Aeon Language certified SHA:** `b5e27a9bbc836897d9ac20d92c7d2fb786335f8f`
 **Target platform:** Windows 11 x64
 
@@ -103,25 +105,33 @@ committed and **not** uploaded to GitHub-hosted CI.
 ## 7. Windows CI evidence
 
 Workflow: `.github/workflows/aeon-windows.yml`
+Run: `30545567117` on head `721ce5b8` — **13 / 13 steps green** on `windows-latest`.
 
-Jobs:
+| Step                                                     | Conclusion |
+| -------------------------------------------------------- | ---------- |
+| Install runtime + PyInstaller                            | success    |
+| Build PyInstaller onedir bundle                          | success    |
+| Bundle sanity check (aeon-launcher.exe --smoke, CERTIFIED)| success    |
+| Build Inno Setup installer                               | success    |
+| Compute SHA-256 checksums                                | success    |
+| Silent-install the produced installer                    | success    |
+| Verify installed launcher runs certified startup         | success    |
+| Ordinary-user launch (no admin, no console)              | success    |
+| Uninstall (verified launcher removed)                    | success    |
+| Upload Windows artifacts (best-effort)                   | success    |
 
-- `windows-package` — installs runtime + PyInstaller, builds the
-  PyInstaller onedir bundle, invokes the packaged launcher with
-  `--smoke` inside the bundle directory to verify CERTIFIED
-  startup, runs Inno Setup to produce the installer, computes
-  SHA-256 checksums, and uploads bundle + installer + smoke JSON
-  + checksums as artifacts.
-- `windows-clean-install` — downloads artifacts, silently installs
-  the setup .exe, verifies the installed launcher runs certified
-  startup at `%ProgramFiles%\Aeon\aeon-launcher.exe`, performs an
-  ordinary-user launch, and silently uninstalls.
-- `windows-artifact-verification` — recomputes SHA-256 of the
-  uploaded installer and bundle to prove artifact integrity end
-  to end.
+The Bundle sanity check step additionally asserts that the
+packaged launcher reports
+`configuration_digest == 5cd0371f157fe9dd921c45b888ece3228aee7f9b3a247968e6c7714fdb88753d`
+so that any drift in the packaged frozen certified configuration
+is caught in CI, not just in inspection.
 
-Run IDs and per-job conclusions are populated after the first
-`windows-latest` run succeeds against the L16 commit.
+Historical iteration on head `2331d94` (aeon-windows run
+`30544500455`) exposed a launcher relative-import defect that
+was fixed additively in the `aae28a3` commit, and head `c05413a`
+(run `30544049113`) exposed a PyInstaller working-directory
+mismatch that was fixed additively in `2331d94`. The
+authoritative Windows evidence is on `721ce5b`.
 
 ## 8. Test matrix (executed by CI on windows-latest)
 
@@ -160,10 +170,12 @@ Linux source-tree checkout; both must report identical
 
 ## 11. Windows release decision
 
-**Windows package validation:** *populated by CI on the L16 SHA.*
+**Windows package validation:** `WINDOWS PACKAGE VALIDATED` on
+head `721ce5b8`, aeon-windows run `30545567117`, 13/13 steps
+green on `windows-latest`.
+
 **Windows signed release:** `WINDOWS RELEASE BLOCKED` — no
-signing credentials in this environment. Package validation may
-be `WINDOWS PACKAGE VALIDATED` independently.
+signing credentials in this environment.
 
 These decisions are separate from the semantic-runtime decision
 `CERTIFIED RUNTIME ACTIVATED`. See
