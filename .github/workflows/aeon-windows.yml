@@ -9,10 +9,17 @@ on:
 # L16 packaging must run on a genuine Windows host. The mandate
 # rejects Linux-built binaries renamed .exe. Every job in this
 # workflow requires windows-latest.
+#
+# The build + validate stages are consolidated into one job so
+# no artifact hand-off is required (the GitHub Actions artifact
+# storage quota on this account is an environmental constraint
+# unrelated to Windows packaging correctness). Artifact upload
+# is attempted at the end and is best-effort; if it fails the
+# validate stages have already proven the build.
 
 jobs:
-  windows-package:
-    name: build Windows bundle + installer
+  windows-build-and-validate:
+    name: build + validate Windows bundle + installer on windows-latest
     runs-on: windows-latest
     env:
       PYTHONUTF8: "1"
@@ -45,16 +52,15 @@ jobs:
         run: |
           dist\aeon-launcher\aeon-launcher.exe --smoke > bundle-smoke.json
           type bundle-smoke.json
-          python -c "import json; d=json.load(open('bundle-smoke.json')); assert d['ok'] is True, d; assert d['runtime_mode']=='CERTIFIED', d"
+          python -c "import json; d=json.load(open('bundle-smoke.json')); assert d['ok'] is True, d; assert d['runtime_mode']=='CERTIFIED', d; assert d['startup']['configuration_digest']=='5cd0371f157fe9dd921c45b888ece3228aee7f9b3a247968e6c7714fdb88753d', d"
 
       - name: Build Inno Setup installer
         shell: pwsh
         working-directory: aeon-application/packaging/windows
         run: |
-          # Inno Setup 6 is preinstalled on GitHub Actions windows-latest.
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           & $iscc aeon-installer.iss
-          dir Output
+          Get-ChildItem Output
 
       - name: Compute SHA-256 checksums
         shell: pwsh
@@ -67,41 +73,12 @@ jobs:
             Get-FileHash -Algorithm SHA256 |
             Format-List | Tee-Object -FilePath windows-bundle.sha256.txt
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: aeon-windows-artifacts
-          path: |
-            aeon-application/dist/aeon-launcher/**
-            aeon-application/packaging/windows/Output/*.exe
-            aeon-application/windows-installer.sha256.txt
-            aeon-application/windows-bundle.sha256.txt
-            aeon-application/bundle-smoke.json
-          if-no-files-found: error
-
-  windows-clean-install:
-    name: silent-install + certified-smoke + snapshot/replay
-    needs: windows-package
-    runs-on: windows-latest
-    steps:
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: aeon-windows-artifacts
-          path: artifacts
-
-      - name: List downloaded files
+      - name: Silent-install the produced installer
         shell: pwsh
+        working-directory: aeon-application
         run: |
-          Get-ChildItem -Recurse artifacts | Select-Object FullName, Length
-
-      - name: Silent install
-        shell: pwsh
-        run: |
-          $setup = Get-ChildItem -Recurse artifacts\Output\*.exe | Select-Object -First 1
+          $setup = Get-ChildItem packaging\windows\Output\*.exe | Select-Object -First 1
           if (-not $setup) { throw "installer .exe not found" }
-          # /VERYSILENT + /NORESTART for unattended install; /LOG so
-          # failures surface in the CI log.
           Start-Process -FilePath $setup.FullName `
             -ArgumentList '/VERYSILENT','/NORESTART','/LOG=install.log' `
             -Wait -NoNewWindow
@@ -124,17 +101,6 @@ jobs:
           Get-Content user-launch.json
           python -c "import json,sys; d=json.load(open('user-launch.json')); sys.exit(0 if d['ok'] else 1)"
 
-      - name: Snapshot + replay via bundled launcher
-        shell: pwsh
-        run: |
-          # The launcher itself doesn't take a snapshot/replay subcommand
-          # (yet), so we exercise the packaged Python by invoking
-          # aeon_app.cli directly via the bundle's aeon-launcher.exe
-          # console. If the console CLIs are added to the bundle later,
-          # this step will call them; today we verify the smoke.
-          Write-Host "snapshot/replay is exercised in-process on Linux CI;"
-          Write-Host "windows-clean-install proves the packaged startup contract."
-
       - name: Uninstall
         shell: pwsh
         run: |
@@ -146,24 +112,25 @@ jobs:
             throw "launcher remained after uninstall"
           }
 
-  windows-artifact-verification:
-    name: verify uploaded artifact digests
-    needs: windows-package
-    runs-on: windows-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      # Best-effort artifact upload for operator review. May be
+      # blocked by GitHub Actions storage quota on this account;
+      # the previous steps already proved the build. continue-on-error
+      # so a quota-blocked upload does not falsely fail the job.
+      - name: Upload Windows artifacts (best-effort)
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: aeon-windows-artifacts
-          path: artifacts
-
-      - name: Recompute + compare
-        shell: pwsh
-        run: |
-          $installer = Get-ChildItem -Recurse artifacts\Output\*.exe | Select-Object -First 1
-          $bundle    = Get-ChildItem -Recurse artifacts -Filter aeon-launcher.exe | Select-Object -First 1
-          Get-FileHash -Algorithm SHA256 $installer.FullName | Format-List
-          Get-FileHash -Algorithm SHA256 $bundle.FullName    | Format-List
+          path: |
+            aeon-application/dist/aeon-launcher/**
+            aeon-application/packaging/windows/Output/*.exe
+            aeon-application/windows-installer.sha256.txt
+            aeon-application/windows-bundle.sha256.txt
+            aeon-application/bundle-smoke.json
+            aeon-application/install-smoke.json
+            aeon-application/user-launch.json
+            aeon-application/install.log
+          if-no-files-found: error
 
 # Signing runs OUTSIDE this workflow, in an authorized signing
 # environment. When credentials are available, sign the installer
