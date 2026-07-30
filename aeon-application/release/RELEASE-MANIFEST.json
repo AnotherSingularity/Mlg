@@ -1,0 +1,40 @@
+{
+  "aeon_language_certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
+  "aeon_language_required_version": "0.1.0",
+  "application_config_schema_version": "0.1.0",
+  "application_conformance_schema_version": "0.1.0",
+  "application_evaluation_schema_version": "0.1.0",
+  "application_graph_schema_version": "0.1.0",
+  "application_snapshot_schema_version": "0.1.0",
+  "application_version": "0.1.0",
+  "artifact": "aeon-application-v0.1.0",
+  "conformance_manifest_digest": "50193f10709ca09d95de8b2cb14f4172d5a4d99e7598cd00a5aba92d7d27463b",
+  "conformance_required_profiles": [
+    "CONFIG",
+    "SOURCE",
+    "PROJECTION",
+    "RECURSION",
+    "SCHEDULER",
+    "FEEDBACK",
+    "PERSISTENCE",
+    "TRAINING"
+  ],
+  "console_scripts": [
+    "aeon-app-check",
+    "aeon-app-compile",
+    "aeon-app-run",
+    "aeon-app-train",
+    "aeon-app-evaluate",
+    "aeon-app-snapshot",
+    "aeon-app-replay",
+    "aeon-app-inspect"
+  ],
+  "default_runtime_mode": "REFERENCE",
+  "reference_config_digest": "a5a8a20ca687159ef4fc5034110d7e95a0651005cdffbc8becb57bb1fdf8c13d",
+  "reference_config_semantic_digest": "d272bed4635b7a11de14b420c10b5bb08642d49c93014a5d2b3247dbcc038533",
+  "reference_graph_id": "9ad81a0c6573e822e8c45ff6ea97405432f8a46ff8153f6cbcd0ee7e134b5908",
+  "reference_instruction_count": 21,
+  "reference_ir_module_id": "b94653c5e08c0df02748680ef1683ee1c0024088b04479995a9f0dc95a49ff83",
+  "release_notes": "First greenfield Aeon-native application built directly on the certified Aeon Language v0.1.0 substrate. Default runtime_mode is REFERENCE; CERTIFIED mode is NOT activated by this release and remains gated on human sign-off (mandate §5, Gate L-J).",
+  "test_count_reference": 79
+}

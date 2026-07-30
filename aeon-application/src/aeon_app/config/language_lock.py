@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Optional
 
@@ -54,21 +55,37 @@ class LanguageLockRecord:
     lock_generator: str
 
 
-def _repo_root() -> Path:
-    # aeon-application/src/aeon_app/config/language_lock.py -> repo root
-    return Path(__file__).resolve().parents[4]
+LOCK_RESOURCE_NAME = "AEON-LANGUAGE-LOCK.json"
 
 
-def _default_lock_path() -> Path:
-    return _repo_root() / "aeon-application" / "AEON-LANGUAGE-LOCK.json"
+def _packaged_lock_text() -> Optional[str]:
+    """Return the lock file text from the installed package, or
+    ``None`` if it is not available under ``aeon_app``."""
+    try:
+        resource = resources.files("aeon_app").joinpath(LOCK_RESOURCE_NAME)
+        if resource.is_file():
+            return resource.read_text(encoding="utf-8")
+    except (ModuleNotFoundError, FileNotFoundError, OSError):
+        pass
+    return None
 
 
 def load_lock(path: Optional[Path] = None) -> LanguageLockRecord:
-    p = Path(path) if path is not None else _default_lock_path()
-    if not p.exists():
-        raise LanguageLockError("LOCK_MISSING",
-                                f"language lock file not found at {p}")
-    data = json.loads(p.read_text(encoding="utf-8"))
+    if path is not None:
+        p = Path(path)
+        if not p.exists():
+            raise LanguageLockError("LOCK_MISSING",
+                                    f"language lock file not found at {p}")
+        text = p.read_text(encoding="utf-8")
+    else:
+        text = _packaged_lock_text()
+        if text is None:
+            raise LanguageLockError(
+                "LOCK_MISSING",
+                f"language lock resource {LOCK_RESOURCE_NAME!r} "
+                "not found inside installed aeon_app package",
+            )
+    data = json.loads(text)
     try:
         return LanguageLockRecord(
             language_version=data["language_version"],

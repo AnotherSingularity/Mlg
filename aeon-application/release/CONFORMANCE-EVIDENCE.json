@@ -1,0 +1,98 @@
+{
+  "aggregate": {
+    "profiles_failed": 0,
+    "profiles_passed": 8,
+    "profiles_run": 8,
+    "required_failed": [],
+    "total_fail_count": 0,
+    "total_pass_count": 50,
+    "total_skip_count": 0
+  },
+  "application_version": "0.1.0",
+  "decision": "PASS",
+  "language_certified_commit": "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f",
+  "manifest_digest": "50193f10709ca09d95de8b2cb14f4172d5a4d99e7598cd00a5aba92d7d27463b",
+  "profiles": [
+    {
+      "category": "language_conformance",
+      "fail_count": 0,
+      "gate": "Gate L-A",
+      "name": "CONFIG",
+      "pass_count": 15,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "source_conformance",
+      "fail_count": 0,
+      "gate": "Gate L-B",
+      "name": "SOURCE",
+      "pass_count": 10,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "boundedness",
+      "fail_count": 0,
+      "gate": "Gate L-C",
+      "name": "PROJECTION",
+      "pass_count": 5,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "contraction_status",
+      "fail_count": 0,
+      "gate": "Gate L-D",
+      "name": "RECURSION",
+      "pass_count": 3,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "runtime_determinism",
+      "fail_count": 0,
+      "gate": "Gate L-E",
+      "name": "SCHEDULER",
+      "pass_count": 2,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "feedback_neutrality",
+      "fail_count": 0,
+      "gate": "Gate L-G",
+      "name": "FEEDBACK",
+      "pass_count": 3,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "snapshot_fidelity",
+      "fail_count": 0,
+      "gate": "Gate L-F",
+      "name": "PERSISTENCE",
+      "pass_count": 5,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    },
+    {
+      "category": "training_reproducibility",
+      "fail_count": 0,
+      "gate": "Gate L-H",
+      "name": "TRAINING",
+      "pass_count": 7,
+      "passed": true,
+      "required": true,
+      "skip_count": 0
+    }
+  ],
+  "schema_version": "0.1.0"
+}
