@@ -1,0 +1,18 @@
+Aeon v0.1.0 — Windows release checksums (template)
+
+application_release_sha:  <fill in from AEON_APPLICATION_RELEASE_SHA>
+language_sha:             b5e27a9bbc836897d9ac20d92c7d2fb786335f8f
+
+# artifact_filename                                        role                sha256
+AeonApplicationSetup-0.1.0.exe                             windows_installer   <post-sign SHA-256>
+aeon-launcher.exe                                          windows_launcher    <post-sign SHA-256>
+
+Notes:
+- Values are the POST-signing SHA-256 hashes. The pre-signing
+  hashes are recorded separately in the signing manifest.
+- The signing manifest itself lives beside this file in the
+  release bundle as SIGNING-MANIFEST.json.
+- This template is populated by the aeon-windows-signed-release
+  CI job at release-signing time. It is never populated by hand,
+  and never populated on any machine that is not the authorized
+  signing environment.

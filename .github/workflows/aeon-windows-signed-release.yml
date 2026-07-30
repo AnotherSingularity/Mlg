@@ -1,0 +1,333 @@
+name: aeon-windows-signed-release
+
+# Protected signed-release workflow for Aeon v0.1.0 on Windows.
+#
+# This workflow is NEVER triggered by pushes or by pull requests
+# from forks — those cannot access signing credentials. It runs
+# ONLY on manual dispatch AND only after the `signing`
+# GitHub environment approves the run. That environment must be
+# configured with:
+#
+#   - required reviewers (auditable operator identity)
+#   - deployment protection: allowed refs limited to
+#     tags matching `aeon-v*` (or a protected release branch)
+#   - environment secrets:
+#       CODE_SIGNING_CERT_THUMBPRINT
+#         SHA-1 thumbprint of the Authenticode certificate the
+#         installed signing token/HSM exposes to signtool.
+#       CODE_SIGNING_TIMESTAMP_URL
+#         RFC-3161 timestamp authority URL authorized for use.
+#     (No PFX, no password, no private key material is stored
+#     in secrets. The signing certificate MUST be provided by a
+#     hardware token / managed signing service / HSM on the
+#     runner. If a self-hosted runner with a hardware token is
+#     the chosen path, wire it to this workflow via a labeled
+#     runner and adjust `runs-on` accordingly.)
+#
+# The workflow is deliberately conservative: it re-runs every
+# pre-signing test on the release SHA, records pre-signing
+# digests, signs, verifies, rebuilds the installer around the
+# signed executables, re-signs the installer, and re-verifies.
+# It never falls back to a self-signed certificate. If the
+# `signing` environment is not configured, the job fails at the
+# environment gate — never partially signs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Full 40-char application release SHA to sign"
+        required: true
+        type: string
+
+concurrency:
+  group: aeon-windows-signed-release
+  cancel-in-progress: false
+
+jobs:
+  signed-release:
+    name: sign + verify + validate Aeon v0.1.0 Windows release
+    runs-on: windows-latest
+    environment: signing        # required-reviewer gate; supplies secrets
+    env:
+      PYTHONUTF8: "1"
+      RELEASE_SHA: ${{ inputs.release_sha }}
+    steps:
+      - name: Refuse invalid release SHA
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_SHA.Length -ne 40) {
+            throw "release_sha must be the full 40-character SHA, got: $env:RELEASE_SHA"
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+
+      - name: Verify checkout resolves to the requested release SHA
+        shell: pwsh
+        run: |
+          $head = git rev-parse HEAD
+          if ($head -ne $env:RELEASE_SHA) {
+            throw "checkout HEAD $head does not match requested release_sha $env:RELEASE_SHA"
+          }
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime + PyInstaller
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./aeon-language
+          python -m pip install --no-deps ./aeon-application
+          python -m pip install pyinstaller pytest numpy
+
+      - name: Pre-signing tests (application + certified activation)
+        shell: pwsh
+        working-directory: aeon-application
+        env:
+          PYTHONPATH: src;../aeon-language/standard_library;../aeon-language
+        run: |
+          python -m pytest tests/ -q
+
+      - name: Build unsigned PyInstaller bundle
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          pyinstaller --clean --noconfirm packaging\windows\aeon-launcher.spec
+
+      - name: Record pre-signing digests
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $preLauncher = (Get-FileHash -Algorithm SHA256 dist\aeon-launcher\aeon-launcher.exe).Hash
+          $preLauncher | Out-File -FilePath windows-launcher.presign.sha256.txt -Encoding ASCII
+          Write-Host "PRE-SIGN launcher SHA-256: $preLauncher"
+
+      - name: Sign the launcher (Authenticode SHA-256 + RFC-3161 timestamp)
+        shell: pwsh
+        working-directory: aeon-application
+        env:
+          THUMBPRINT: ${{ secrets.CODE_SIGNING_CERT_THUMBPRINT }}
+          TIMESTAMP_URL: ${{ secrets.CODE_SIGNING_TIMESTAMP_URL }}
+        run: |
+          if (-not $env:THUMBPRINT)     { throw "CODE_SIGNING_CERT_THUMBPRINT missing" }
+          if (-not $env:TIMESTAMP_URL)  { throw "CODE_SIGNING_TIMESTAMP_URL missing" }
+          $signtool = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe'
+          if (-not (Test-Path $signtool)) {
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+                         Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          }
+          & $signtool sign /fd SHA256 /td SHA256 /tr $env:TIMESTAMP_URL `
+            /sha1 $env:THUMBPRINT dist\aeon-launcher\aeon-launcher.exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed with $LASTEXITCODE" }
+
+      - name: Verify launcher signature (signtool + Get-AuthenticodeSignature)
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+                       Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          & $signtool verify /pa /all /v dist\aeon-launcher\aeon-launcher.exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed" }
+          $sig = Get-AuthenticodeSignature dist\aeon-launcher\aeon-launcher.exe
+          $sig | Format-List *
+          if ($sig.Status -ne 'Valid') { throw "Get-AuthenticodeSignature status is $($sig.Status)" }
+          if (-not $sig.TimeStamperCertificate) { throw "signature is not timestamped" }
+
+      - name: Record post-signing launcher digest
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $postLauncher = (Get-FileHash -Algorithm SHA256 dist\aeon-launcher\aeon-launcher.exe).Hash
+          $postLauncher | Out-File -FilePath windows-launcher.postsign.sha256.txt -Encoding ASCII
+          Write-Host "POST-SIGN launcher SHA-256: $postLauncher"
+
+      - name: Build installer around the signed launcher
+        shell: pwsh
+        working-directory: aeon-application/packaging/windows
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          & $iscc aeon-installer.iss
+
+      - name: Record pre-signing installer digest
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $installer = Get-ChildItem packaging\windows\Output\*.exe | Select-Object -First 1
+          if (-not $installer) { throw "installer .exe not produced" }
+          $preInstaller = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
+          $preInstaller | Out-File -FilePath windows-installer.presign.sha256.txt -Encoding ASCII
+          Write-Host "PRE-SIGN installer SHA-256: $preInstaller"
+
+      - name: Sign the installer
+        shell: pwsh
+        working-directory: aeon-application
+        env:
+          THUMBPRINT: ${{ secrets.CODE_SIGNING_CERT_THUMBPRINT }}
+          TIMESTAMP_URL: ${{ secrets.CODE_SIGNING_TIMESTAMP_URL }}
+        run: |
+          $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+                       Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          $installer = Get-ChildItem packaging\windows\Output\*.exe | Select-Object -First 1
+          & $signtool sign /fd SHA256 /td SHA256 /tr $env:TIMESTAMP_URL `
+            /sha1 $env:THUMBPRINT $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign (installer) failed with $LASTEXITCODE" }
+
+      - name: Verify installer signature
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+                       Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          $installer = Get-ChildItem packaging\windows\Output\*.exe | Select-Object -First 1
+          & $signtool verify /pa /all /v $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify (installer) failed" }
+          $sig = Get-AuthenticodeSignature $installer.FullName
+          $sig | Format-List *
+          if ($sig.Status -ne 'Valid') { throw "installer signature status is $($sig.Status)" }
+          if (-not $sig.TimeStamperCertificate) { throw "installer signature is not timestamped" }
+          $postInstaller = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
+          $postInstaller | Out-File -FilePath windows-installer.postsign.sha256.txt -Encoding ASCII
+          Write-Host "POST-SIGN installer SHA-256: $postInstaller"
+
+      - name: Silent-install the signed installer
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $installer = Get-ChildItem packaging\windows\Output\*.exe | Select-Object -First 1
+          Start-Process -FilePath $installer.FullName `
+            -ArgumentList '/VERYSILENT','/NORESTART','/LOG=install.log' `
+            -Wait -NoNewWindow
+          Get-Content install.log
+
+      - name: Verify installed-file signatures
+        shell: pwsh
+        run: |
+          $installed = "C:\Program Files\Aeon\aeon-launcher.exe"
+          if (-not (Test-Path $installed)) { throw "launcher not installed at $installed" }
+          $sig = Get-AuthenticodeSignature $installed
+          $sig | Format-List *
+          if ($sig.Status -ne 'Valid') {
+            throw "installed launcher signature status is $($sig.Status)"
+          }
+
+      - name: Certified startup on signed installation
+        shell: pwsh
+        run: |
+          $exe = "C:\Program Files\Aeon\aeon-launcher.exe"
+          & $exe --smoke > install-smoke.json
+          Get-Content install-smoke.json
+          python -c "import json,sys; d=json.load(open('install-smoke.json')); assert d['ok'] and d['runtime_mode']=='CERTIFIED', d; assert d['startup']['configuration_digest']=='5cd0371f157fe9dd921c45b888ece3228aee7f9b3a247968e6c7714fdb88753d', d"
+
+      - name: Ordinary-user launch on signed installation
+        shell: pwsh
+        run: |
+          $exe = "C:\Program Files\Aeon\aeon-launcher.exe"
+          & $exe > user-launch.json
+          python -c "import json,sys; d=json.load(open('user-launch.json')); sys.exit(0 if d['ok'] else 1)"
+
+      - name: Signed / source semantic parity
+        shell: pwsh
+        working-directory: aeon-application
+        env:
+          PYTHONPATH: src;../aeon-language/standard_library;../aeon-language
+        run: |
+          # Source-tree launcher (unsigned) emits the same JSON envelope
+          # as the installed signed launcher. Compare the semantic
+          # subset (startup + release_manifest + outputs); ignore the
+          # runtime-host block and user directories which differ by
+          # design.
+          python -m aeon_app.launcher --smoke > source-smoke.json
+          type source-smoke.json
+          python -c "
+          import json, sys
+          src = json.load(open('source-smoke.json'))
+          ins = json.load(open('C:/Program Files/Aeon/install-smoke.json.doesnotexist'))" 2>$null
+          # The signed installed launcher already produced install-smoke.json
+          # in a prior step; parity is asserted by digest equality:
+          python -c "
+          import json
+          src = json.load(open('source-smoke.json'))
+          ins = json.load(open('install-smoke.json'))
+          for k in ('graph_digest','ir_digest','configuration_digest','language_commit','backend'):
+              assert src['startup'][k] == ins['startup'][k], (k, src['startup'][k], ins['startup'][k])
+          assert src['runtime_mode'] == ins['runtime_mode']
+          # Payload parity across the same certified fixture:
+          src_payloads = [o['payload'] for o in src['outputs']]
+          ins_payloads = [o['payload'] for o in ins['outputs']]
+          assert src_payloads == ins_payloads, 'output payload divergence'
+          print('SIGNED/SOURCE PARITY: OK')
+          "
+
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          $uninst = "C:\Program Files\Aeon\unins000.exe"
+          if (Test-Path $uninst) {
+            Start-Process -FilePath $uninst -ArgumentList '/VERYSILENT','/NORESTART' -Wait
+          }
+          if (Test-Path "C:\Program Files\Aeon\aeon-launcher.exe") {
+            throw "launcher remained after uninstall"
+          }
+
+      - name: Emit signing manifest
+        shell: pwsh
+        working-directory: aeon-application
+        run: |
+          $installer = Get-ChildItem packaging\windows\Output\*.exe | Select-Object -First 1
+          $manifest = @{
+            schema_version           = "0.1.0"
+            application_version      = "0.1.0"
+            application_release_sha  = $env:RELEASE_SHA
+            language_version         = "0.1.0"
+            language_sha             = "b5e27a9bbc836897d9ac20d92c7d2fb786335f8f"
+            artifacts = @(
+              @{
+                name              = "aeon-launcher.exe"
+                role              = "windows_launcher"
+                pre_sign_sha256   = (Get-Content windows-launcher.presign.sha256.txt).Trim()
+                post_sign_sha256  = (Get-Content windows-launcher.postsign.sha256.txt).Trim()
+                signing_status    = "signed"
+                signature_verification = "valid"
+              },
+              @{
+                name              = $installer.Name
+                role              = "windows_installer"
+                pre_sign_sha256   = (Get-Content windows-installer.presign.sha256.txt).Trim()
+                post_sign_sha256  = (Get-Content windows-installer.postsign.sha256.txt).Trim()
+                signing_status    = "signed"
+                signature_verification = "valid"
+              }
+            )
+          }
+          $manifest | ConvertTo-Json -Depth 5 | `
+            Out-File -FilePath packaging\windows\SIGNING-MANIFEST.json -Encoding UTF8
+          Get-Content packaging\windows\SIGNING-MANIFEST.json
+
+      - name: Upload signed release artifacts (best-effort)
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: aeon-v0.1.0-windows-signed
+          path: |
+            aeon-application/dist/aeon-launcher/aeon-launcher.exe
+            aeon-application/packaging/windows/Output/*.exe
+            aeon-application/packaging/windows/SIGNING-MANIFEST.json
+            aeon-application/windows-launcher.presign.sha256.txt
+            aeon-application/windows-launcher.postsign.sha256.txt
+            aeon-application/windows-installer.presign.sha256.txt
+            aeon-application/windows-installer.postsign.sha256.txt
+            aeon-application/install-smoke.json
+            aeon-application/user-launch.json
+            aeon-application/source-smoke.json
+          if-no-files-found: error
+
+# Do not accept a self-signed or expired certificate for public
+# production certification. If the `signing` environment or its
+# secrets are not configured this workflow fails at the
+# environment gate; do not "fix" that by inlining test
+# credentials.
