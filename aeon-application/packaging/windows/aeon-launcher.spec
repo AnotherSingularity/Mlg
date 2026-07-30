@@ -4,16 +4,24 @@
 # launcher executable, the pinned Aeon Language runtime, and every
 # resource file needed for certified startup verification.
 #
-# Invoke from the repo root:
+# Invoke from the aeon-application/ directory (not from packaging/windows):
 #     pyinstaller --clean --noconfirm packaging/windows/aeon-launcher.spec
 #
-# The resulting dist/aeon-launcher/ is passed to Inno Setup by
-# packaging/windows/aeon-installer.iss.
+# so that dist/ and build/ land at aeon-application/dist/ and
+# aeon-application/build/. The Inno Setup script assumes that layout.
 
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
 from PyInstaller.utils.hooks import collect_all
+
+# Path anchoring: SPECPATH is the directory of this spec file
+# (aeon-application/packaging/windows). Everything else is derived
+# from SPECPATH so the invocation directory doesn't matter for path
+# resolution.
+APP_ROOT = os.path.abspath(os.path.join(SPECPATH, "..", ".."))
+REPO_ROOT = os.path.abspath(os.path.join(APP_ROOT, ".."))
+LANG_ROOT = os.path.join(REPO_ROOT, "aeon-language")
 
 datas = []
 binaries = []
@@ -30,11 +38,11 @@ block_cipher = None
 
 
 a = Analysis(
-    ["../../src/aeon_app/launcher/__main__.py"],
+    [os.path.join(APP_ROOT, "src", "aeon_app", "launcher", "__main__.py")],
     pathex=[
-        os.path.abspath("../../src"),
-        os.path.abspath("../../../aeon-language"),
-        os.path.abspath("../../../aeon-language/standard_library"),
+        os.path.join(APP_ROOT, "src"),
+        LANG_ROOT,
+        os.path.join(LANG_ROOT, "standard_library"),
     ],
     binaries=binaries,
     datas=datas,

@@ -12,6 +12,9 @@
 #define AppVersion "0.1.0"
 #define AppPublisher "Aeon"
 #define AppExeName "aeon-launcher.exe"
+; PyInstaller runs from aeon-application/ (see aeon-launcher.spec
+; header + aeon-windows workflow). AppSourceDir is resolved relative
+; to this .iss file at aeon-application/packaging/windows/.
 #define AppSourceDir "..\..\dist\aeon-launcher"
 
 [Setup]

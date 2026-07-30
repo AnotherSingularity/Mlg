@@ -34,10 +34,10 @@ jobs:
 
       - name: Build PyInstaller onedir bundle
         shell: pwsh
-        working-directory: aeon-application/packaging/windows
+        working-directory: aeon-application
         run: |
-          pyinstaller --clean --noconfirm aeon-launcher.spec
-          dir ..\..\dist\aeon-launcher
+          pyinstaller --clean --noconfirm packaging\windows\aeon-launcher.spec
+          Get-ChildItem dist\aeon-launcher | Select-Object -First 20
 
       - name: Bundle sanity check (invoke launcher with --smoke)
         shell: pwsh

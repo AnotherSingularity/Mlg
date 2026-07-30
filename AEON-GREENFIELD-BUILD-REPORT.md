@@ -5,7 +5,8 @@
 **Branch:** `claude/aeon-language-phase-0-24enl0`
 **Aeon Language pin:** `0.1.0` @ `b5e27a9bbc836897d9ac20d92c7d2fb786335f8f`
 **Report date:** 2026-07-30
-**Default runtime mode:** `REFERENCE`
+**Default runtime mode (as of Gate L-J report):** `REFERENCE`
+**Default runtime mode (as of L15 activation):** `CERTIFIED` — see `aeon-application/reports/L15-CERTIFIED-ACTIVATION-REPORT.md` and `AEON-v0.1.0-FINAL-RELEASE-REPORT.md`
 
 This report is the mechanical Gate L-A..L-J evaluation required by
 `aeon-application/specification/03-GATES.md` and by the Gate L
